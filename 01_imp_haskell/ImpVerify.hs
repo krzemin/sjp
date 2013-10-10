@@ -92,6 +92,18 @@ checkABCTreeTests =
   	Nothing @=? checkAtree (Aaxiom ((Var "x"), [("x", 1)], 5))
   , testCase "Atree: Var, incorrect (not found)" $
   	Nothing @=? checkAtree (Aaxiom ((Var "x"), [], 5))
+  , testCase "Atree: Add, correct" $
+  	Just ((Add (Var "x") (Num 10)), [("x", 5)], 15) @=?
+  	checkAtree (Arule ((Add (Var "x") (Num 10)), [("x", 5)], 15) [Aaxiom ((Var "x"), [("x", 5)], 5), Aaxiom ((Num 10), [("x", 5)], 10)])
+  , testCase "Atree: Add, incorrect value" $
+  	Nothing @=?
+  	checkAtree (Arule ((Add (Var "x") (Num 10)), [("x", 5)], 8) [Aaxiom ((Var "x"), [("x", 5)], 5), Aaxiom ((Num 10), [("x", 5)], 10)])
+  , testCase "Atree: Mul, correct" $
+  	Just ((Mul (Var "x") (Num 10)), [("x", 5)], 50) @=?
+  	checkAtree (Arule ((Mul (Var "x") (Num 10)), [("x", 5)], 50) [Aaxiom ((Var "x"), [("x", 5)], 5), Aaxiom ((Num 10), [("x", 5)], 10)])
+  , testCase "Atree: Mul, incorrect value" $
+  	Nothing @=?
+  	checkAtree (Arule ((Mul (Var "x") (Num 10)), [("x", 5)], 8) [Aaxiom ((Var "x"), [("x", 5)], 5), Aaxiom ((Num 10), [("x", 5)], 10)])
   , testCase "Btree: T, correct" $
   	Just (T, [], True) @=? checkBtree (Baxiom (T, [], True))
   , testCase "Btree: T, incorrect" $
