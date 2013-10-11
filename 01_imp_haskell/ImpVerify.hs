@@ -64,7 +64,9 @@ checkAtree _ = Nothing
 checkBtree :: Btree -> Maybe (Bexp, State, Bool)
 
 checkBtree (Baxiom b@(T, _, True)) = Just b
+
 checkBtree (Baxiom b@(F, _, False)) = Just b
+
 checkBtree (Brule b@((Not e), s, t) [p]) = do
 	(e', s', t') <- checkBtree p
 	if e' == e && s' == s && t' == (not t) then
@@ -72,6 +74,21 @@ checkBtree (Brule b@((Not e), s, t) [p]) = do
 	else
 		fail ""
 
+checkBtree (Brule b@((And e1 e2), s, t) [p1,p2]) = do
+  (e1', s1', t1') <- checkBtree p1
+  (e2', s2', t2') <- checkBtree p2
+  if (e1', e2') == (e1, e2) && (s1', s2') == (s, s) && t == (t1' && t2') then
+    return b
+  else
+    fail ""
+
+checkBtree (Brule b@((Or e1 e2), s, t) [p1,p2]) = do
+  (e1', s1', t1') <- checkBtree p1
+  (e2', s2', t2') <- checkBtree p2
+  if (e1', e2') == (e1, e2) && (s1', s2') == (s, s) && t == (t1' || t2') then
+    return b
+  else
+    fail ""
 
 
 checkBtree _ = Nothing
@@ -112,10 +129,26 @@ checkABCTreeTests =
   	Just (F, [], False) @=? checkBtree (Baxiom (F, [], False))
   , testCase "Btree: F, incorrect" $
   	Nothing @=? checkBtree (Baxiom (F, [], True))
-  , testCase "Btree: F, correct" $
+  , testCase "Btree: Not, correct" $
   	Just ((Not T), [], False) @=? checkBtree (Brule ((Not T), [], False) [Baxiom (T, [], True)])
-  , testCase "Btree: F, incorrect" $
+  , testCase "Btree: Not, incorrect" $
   	Nothing @=? checkBtree (Brule ((Not T), [], True) [Baxiom (T, [], True)])
+  , testCase "Btree: And, correct" $
+    let expr = (And T T) in
+    Just (expr, [], True) @=?
+    checkBtree (Brule (expr, [], True) [Baxiom (T, [], True), Baxiom (T, [], True)])
+  , testCase "Btree: And, incorrect" $
+    let expr = (And T T) in
+    Nothing @=?
+    checkBtree (Brule (expr, [], False) [Baxiom (T, [], True), Baxiom (T, [], True)])
+  , testCase "Btree: Or, correct" $
+    let expr = (Or F T) in
+    Just (expr, [], True) @=?
+    checkBtree (Brule (expr, [], True) [Baxiom (F, [], False), Baxiom (T, [], True)])
+  , testCase "Btree: Or, incorrect" $
+    let expr = (Or F F) in
+    Nothing @=?
+    checkBtree (Brule (expr, [], True) [Baxiom (F, [], False), Baxiom (F, [], False)])
   ]
 
 
