@@ -2,11 +2,12 @@ module ImpVerify where
 
 import Test.HUnit (Assertion, (@=?), runTestTT, Test(..), Counts(..))
 import System.Exit (ExitCode(..), exitWith)
+import Debug.Trace 
 
 type Numeral = Int
 type Identifier = String
 data Aexp = Num Numeral | Var Identifier | Add Aexp Aexp | Mul Aexp Aexp deriving (Show, Eq)
-data Bexp = T | F | Not Bexp | And Bexp Bexp | Or Bexp Bexp | Eq Aexp Aexp | Leq Aexp Aexp deriving (Show, Eq)
+data Bexp = T | F | Not Bexp | And Bexp Bexp | Or Bexp Bexp | Leq Aexp Aexp deriving (Show, Eq)
 data Com = Skip | Assign Identifier Aexp | Seq Com Com | If Bexp Com Com | While Bexp Com deriving (Show, Eq)
 
 type State = [(Identifier, Numeral)]
@@ -17,81 +18,69 @@ lookupState = lookup
 insertState :: (Identifier, Numeral) -> State -> State
 insertState (x, n) [] = [(x, n)]
 insertState (x, n) ((y, m) : s)
-	| x == y
-		= (x, n) : s
-	| otherwise
-		= (y, m) : (insertState (x, n) s)
+	| x == y = (x, n) : s
+	| otherwise = (y, m) : (insertState (x, n) s)
 
 
-data Atree = Aaxiom (Aexp, State, Numeral) | Arule (Aexp, State, Numeral) [Atree] deriving (Show, Eq)
-data Btree = Baxiom (Bexp, State, Bool) | Brule (Bexp, State, Bool) [Btree] deriving (Show, Eq)
-data Ctree = Caxiom (Com, State, State) | Crule (Com, State, State) [Ctree] deriving (Show, Eq)
+data Atree =  NumAxiom (Aexp, State, Numeral)
+            | VarAxiom (Aexp, State, Numeral)
+            | AddRule (Aexp, State, Numeral) Atree Atree
+            | MulRule (Aexp, State, Numeral) Atree Atree
+
 
 checkAtree :: Atree -> Maybe (Aexp, State, Numeral)
 
-checkAtree (Aaxiom a@((Num m), s, n))
-	| m == n = Just a
-	
-checkAtree (Aaxiom a@((Var x), s, m)) = do
-	n <- lookupState x s
-	if n == m then
-		return a
-	else
-		fail ""
+checkAtree (NumAxiom a@(Num m, _, n))
+  | m == n = Just a
 
-checkAtree (Arule a@((Add a1 a2), s, m) [p1,p2]) = do
-	(a1', s1, m1) <- checkAtree p1
-	(a2', s2, m2) <- checkAtree p2
-	if 	a1' == a1 && a2' == a2 &&
-		s1 == s && s2 == s &&
-		m1 + m2 == m then
-		return a
-	else
-		fail ""
+checkAtree (VarAxiom a@(Var x, s, n)) = do
+  m <- lookupState x s
+  case m == n of
+    True -> return a
+    otherwise -> fail ""
+  
+checkAtree (AddRule a@(Add e1 e2, s, n) tree1 tree2) = do
+  (e1', s1', n1') <- checkAtree tree1
+  (e2', s2', n2') <- checkAtree tree2
+  case (n, e1, e2, s, s) == (n1' + n2', e1', e2', s1', s2') of
+    True -> return a
+    otherwise -> fail ""
 
-checkAtree (Arule a@((Mul a1 a2), s, m) [p1,p2]) = do
-	(a1', s1, m1) <- checkAtree p1
-	(a2', s2, m2) <- checkAtree p2
-	if 	a1' == a1 && a2' == a2 &&
-		s1 == s && s2 == s &&
-		m1 * m2 == m then
-		return a
-	else
-		fail ""
+checkAtree (MulRule a@(Mul e1 e2, s, n) tree1 tree2) = do
+  (e1', s1', n1') <- checkAtree tree1
+  (e2', s2', n2') <- checkAtree tree2
+  case (n, e1, e2, s, s) == (n1' * n2', e1', e2', s1', s2') of
+    True -> return a
+    otherwise -> fail ""
+
 
 checkAtree _ = Nothing
 
+data Btree =  TrueAxiom (Bexp, State, Bool)
+            | FalseAxiom (Bexp, State, Bool)
+            | LeqRule (Bexp, State, Bool) Atree Atree
+            | NotRule (Bexp, State, Bool) Btree
+            | AndRule (Bexp, State, Bool) Btree Btree
+            | OrRule (Bexp, State, Bool) Btree Btree
+
+
 checkBtree :: Btree -> Maybe (Bexp, State, Bool)
 
-checkBtree (Baxiom b@(T, _, True)) = Just b
+checkBtree (TrueAxiom b@(T, _, True)) = Just b
 
-checkBtree (Baxiom b@(F, _, False)) = Just b
+checkBtree (FalseAxiom b@(F, _, False)) = Just b
 
-checkBtree (Brule b@((Not e), s, t) [p]) = do
-	(e', s', t') <- checkBtree p
-	if e' == e && s' == s && t' == (not t) then
-		return b
-	else
-		fail ""
-
-checkBtree (Brule b@((And e1 e2), s, t) [p1,p2]) = do
-  (e1', s1', t1') <- checkBtree p1
-  (e2', s2', t2') <- checkBtree p2
-  if (e1', e2') == (e1, e2) && (s1', s2') == (s, s) && t == (t1' && t2') then
-    return b
-  else
-    fail ""
-
-checkBtree (Brule b@((Or e1 e2), s, t) [p1,p2]) = do
-  (e1', s1', t1') <- checkBtree p1
-  (e2', s2', t2') <- checkBtree p2
-  if (e1', e2') == (e1, e2) && (s1', s2') == (s, s) && t == (t1' || t2') then
-    return b
-  else
-    fail ""
+checkBtree (LeqRule b@(Leq e1 e2, s, r) tree1 tree2) = do
+  (e1', s1', n1') <- checkAtree tree1
+  (e2', s2', n2') <- checkAtree tree2
+  case (r, e1, e2, s, s) == (n1' <= n2', e1', e2', s1', s2') of
+    True -> return b
+    otherwise -> fail ""
 
 
 checkBtree _ = Nothing
+
+
 
 --checkCtree :: CTree -> Maybe (Com, State, State)
 
@@ -99,59 +88,108 @@ checkBtree _ = Nothing
 
 checkABCTreeTests :: [Test]
 checkABCTreeTests =
-  [ testCase "Atree: Num, correct" $
-    Just ((Num 5), [], 5) @=? checkAtree (Aaxiom ((Num 5), [], 5))
-  , testCase "Atree: Num, incorrect" $
-  	Nothing @=? checkAtree (Aaxiom ((Num 5), [], 2))
+  [ testCase "Atree: Num, incorrect" $
+    Nothing @=?
+    checkAtree (NumAxiom (Num 1, [], 0))
+  , testCase "Atree: Num, correct" $
+    Just (Num 1, [], 1) @=?
+    checkAtree (NumAxiom (Num 1, [], 1))
+
+  , testCase "Atree: Var, incorrect 1" $
+    Nothing @=?
+    checkAtree (VarAxiom (Var "x", [], 1))
+  , testCase "Atree: Var, incorrect 2" $
+    Nothing @=?
+    checkAtree (VarAxiom (Var "x", [("x", 2)], 1))
   , testCase "Atree: Var, correct" $
-  	Just ((Var "x"), [("x", 5)], 5) @=? checkAtree (Aaxiom ((Var "x"), [("x", 5)], 5))
-  , testCase "Atree: Var, incorrect (other value)" $
-  	Nothing @=? checkAtree (Aaxiom ((Var "x"), [("x", 1)], 5))
-  , testCase "Atree: Var, incorrect (not found)" $
-  	Nothing @=? checkAtree (Aaxiom ((Var "x"), [], 5))
+    Just (Var "x", [("x", 2)], 2) @=?
+    checkAtree (VarAxiom (Var "x", [("x", 2)], 2))
+  
+  , testCase "Atree: Add, incorrect 1" $
+    let expr = Add (Num 2) (Num 4) in
+    Nothing @=?
+    checkAtree (AddRule (expr, [], 8) (NumAxiom (Num 2, [], 2)) (NumAxiom (Num 4, [], 4)))
+  , testCase "Atree: Add, incorrect 2" $
+    let expr = Add (Num 2) (Num 4) in
+    Nothing @=?
+    checkAtree (AddRule (expr, [], 6) (NumAxiom (Num 3, [], 3)) (NumAxiom (Num 3, [], 3)))
+  , testCase "Atree: Add, incorrect 3" $
+    let expr = Add (Var "x") (Num 2) in
+    let state = [("x", 4)] in
+    Nothing @=?
+    checkAtree (AddRule (expr, state, 6) (NumAxiom (Var "y", [("y", 4)], 4)) (NumAxiom (Num 2, state, 2)))
   , testCase "Atree: Add, correct" $
-  	Just ((Add (Var "x") (Num 10)), [("x", 5)], 15) @=?
-  	checkAtree (Arule ((Add (Var "x") (Num 10)), [("x", 5)], 15) [Aaxiom ((Var "x"), [("x", 5)], 5), Aaxiom ((Num 10), [("x", 5)], 10)])
-  , testCase "Atree: Add, incorrect value" $
-  	Nothing @=?
-  	checkAtree (Arule ((Add (Var "x") (Num 10)), [("x", 5)], 8) [Aaxiom ((Var "x"), [("x", 5)], 5), Aaxiom ((Num 10), [("x", 5)], 10)])
+    let expr = Add (Num 2) (Var "x") in
+    let state = [("x", 4)] in
+    Just (expr, state, 6) @=?
+    checkAtree (AddRule (expr, state, 6) (NumAxiom (Num 2, state, 2)) (VarAxiom (Var "x", state, 4)))
+
+  , testCase "Atree: Mul, incorrect 1" $
+    let expr = Mul (Num 2) (Num 4) in
+    Nothing @=?
+    checkAtree (MulRule (expr, [], 3) (NumAxiom (Num 2, [], 2)) (NumAxiom (Num 4, [], 4)))
+  , testCase "Atree: Mul, incorrect 2" $
+    let expr = Mul (Num 2) (Num 4) in
+    Nothing @=?
+    checkAtree (MulRule (expr, [], 6) (NumAxiom (Num 3, [], 3)) (NumAxiom (Num 3, [], 3)))
+  , testCase "Atree: Mul, incorrect 3" $
+    let expr = Mul (Var "x") (Num 2) in
+    let state = [("x", 4)] in
+    Nothing @=?
+    checkAtree (MulRule (expr, state, 6) (NumAxiom (Var "y", [("y", 4)], 4)) (NumAxiom (Num 2, state, 2)))
   , testCase "Atree: Mul, correct" $
-  	Just ((Mul (Var "x") (Num 10)), [("x", 5)], 50) @=?
-  	checkAtree (Arule ((Mul (Var "x") (Num 10)), [("x", 5)], 50) [Aaxiom ((Var "x"), [("x", 5)], 5), Aaxiom ((Num 10), [("x", 5)], 10)])
-  , testCase "Atree: Mul, incorrect value" $
-  	Nothing @=?
-  	checkAtree (Arule ((Mul (Var "x") (Num 10)), [("x", 5)], 8) [Aaxiom ((Var "x"), [("x", 5)], 5), Aaxiom ((Num 10), [("x", 5)], 10)])
-  , testCase "Btree: T, correct" $
-  	Just (T, [], True) @=? checkBtree (Baxiom (T, [], True))
+    let expr = Mul (Num 2) (Var "x") in
+    let state = [("x", 4)] in
+    Just (expr, state, 8) @=?
+    checkAtree (MulRule (expr, state, 8) (NumAxiom (Num 2, state, 2)) (VarAxiom (Var "x", state, 4)))
+
   , testCase "Btree: T, incorrect" $
-  	Nothing @=? checkBtree (Baxiom (T, [], False))
-  , testCase "Btree: F, correct" $
-  	Just (F, [], False) @=? checkBtree (Baxiom (F, [], False))
+    Nothing @=?
+    checkBtree (TrueAxiom (T, [], False))
+  , testCase "Btree: T, correct" $
+    Just (T, [], True) @=?
+    checkBtree (TrueAxiom (T, [], True))
+
   , testCase "Btree: F, incorrect" $
-  	Nothing @=? checkBtree (Baxiom (F, [], True))
-  , testCase "Btree: Not, correct" $
-  	Just ((Not T), [], False) @=? checkBtree (Brule ((Not T), [], False) [Baxiom (T, [], True)])
-  , testCase "Btree: Not, incorrect" $
-  	Nothing @=? checkBtree (Brule ((Not T), [], True) [Baxiom (T, [], True)])
-  , testCase "Btree: And, correct" $
-    let expr = (And T T) in
-    Just (expr, [], True) @=?
-    checkBtree (Brule (expr, [], True) [Baxiom (T, [], True), Baxiom (T, [], True)])
-  , testCase "Btree: And, incorrect" $
-    let expr = (And T T) in
     Nothing @=?
-    checkBtree (Brule (expr, [], False) [Baxiom (T, [], True), Baxiom (T, [], True)])
-  , testCase "Btree: Or, correct" $
-    let expr = (Or F T) in
-    Just (expr, [], True) @=?
-    checkBtree (Brule (expr, [], True) [Baxiom (F, [], False), Baxiom (T, [], True)])
-  , testCase "Btree: Or, incorrect" $
-    let expr = (Or F F) in
+    checkBtree (FalseAxiom (F, [], True))
+  , testCase "Btree: F, correct" $
+    Just (F, [], False) @=?
+    checkBtree (FalseAxiom (F, [], False))
+
+  , testCase "Btree: Leq, incorrect 1" $
     Nothing @=?
-    checkBtree (Brule (expr, [], True) [Baxiom (F, [], False), Baxiom (F, [], False)])
+    checkBtree (LeqRule (Leq (Num 2) (Num 3), [], False) (NumAxiom (Num 2, [], 2)) (NumAxiom (Num 3, [], 3)))
+  , testCase "Btree: Leq, incorrect 2" $
+    Nothing @=?
+    checkBtree (LeqRule (Leq (Num 3) (Num 3), [], False) (NumAxiom (Num 3, [], 3)) (NumAxiom (Num 3, [], 3)))
+  , testCase "Btree: Leq, incorrect 3" $
+    Nothing @=?
+    checkBtree (LeqRule (Leq (Num 4) (Num 3), [], True) (NumAxiom (Num 4, [], 4)) (NumAxiom (Num 3, [], 3)))
+  , testCase "Btree: Leq, incorrect 4" $
+    let state = [("x", 5)] in
+    Nothing @=?
+    checkBtree (LeqRule (Leq (Var "x") (Num 8), state, True) (VarAxiom (Var "y", state, 3)) (NumAxiom (Num 8, [], 8)))
+  , testCase "Btree: Leq, incorrect 5" $
+    let state = [("x", 5)] in
+    Nothing @=?
+    checkBtree (LeqRule (Leq (Var "x") (Num 8), state, True) (VarAxiom (Var "x", [("x", 1)], 1)) (NumAxiom (Num 8, [], 8)))
+  , testCase "Btree: Leq, correct 1" $
+    Just (Leq (Num 2) (Num 3), [], True) @=?
+    checkBtree (LeqRule (Leq (Num 2) (Num 3), [], True) (NumAxiom (Num 2, [], 2)) (NumAxiom (Num 3, [], 3)))
+  , testCase "Btree: Leq, correct 2" $
+    Just (Leq (Num 3) (Num 3), [], True) @=?
+    checkBtree (LeqRule (Leq (Num 3) (Num 3), [], True) (NumAxiom (Num 3, [], 3)) (NumAxiom (Num 3, [], 3)))
+  , testCase "Btree: Leq, correct 3" $
+    let state = [("x", 9)] in
+    Just (Leq (Var "x") (Num 3), state, False) @=?
+    checkBtree (LeqRule (Leq (Var "x") (Num 3), state, False) (VarAxiom (Var "x", state, 9)) (NumAxiom (Num 3, state, 3)))
+
+  --, testCase "Btree: Not, incorrect" $
+  --  Nothing @=?
+  --  checkBtree (NotRule (Not T, [], True)) (TrueAxiom (T, [], True))
+
   ]
-
-
 
 -- testing stuff
 
