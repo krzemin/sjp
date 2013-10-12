@@ -32,8 +32,8 @@ data Atree =  NumAxiom (Aexp, State, Numeral)
 
 checkAtree :: Atree -> Maybe (Aexp, State, Numeral)
 
-checkAtree (NumAxiom a@(Num m, _, n))
-  | m == n = Just a
+checkAtree (NumAxiom a@(Num m, _, n)) = do
+  (m == n) ==> a
 
 checkAtree (VarAxiom a@(Var x, s, n)) = do
   m <- lookupState x s
