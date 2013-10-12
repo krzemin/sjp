@@ -44,14 +44,12 @@ cexp(seq(C1, C2), S, S3) :-
 cexp(if(B, C, _), S, S1) :-
 	bexp(B, S), !,
 	cexp(C, S, S1).
-cexp(if(B, _, C), S, S1) :-
-	not(bexp(B, S)),
+cexp(if(_, _, C), S, S1) :-
 	cexp(C, S, S1).
-cexp(while(B, _), S, S) :-
-	not(bexp(B, S)), !.
 cexp(while(B, C), S, S2) :-
-	bexp(B, C),
+	bexp(B, S), !,
 	cexp(C, S, S1),
 	cexp(while(B, C), S1, S2).
+cexp(while(_, _), S, S).
 
 
