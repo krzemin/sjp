@@ -2,7 +2,6 @@ module ImpVerify where
 
 import Test.HUnit (Assertion, (@=?), runTestTT, Test(..), Counts(..))
 import System.Exit (ExitCode(..), exitWith)
-import Debug.Trace 
 
 type Numeral = Int
 type Identifier = String
@@ -22,6 +21,10 @@ insertState (x, n) ((y, m) : s)
 	| otherwise = (y, m) : (insertState (x, n) s)
 
 
+(==>) :: Bool -> a -> Maybe a
+False ==> _ = Nothing
+True ==> v = Just v
+
 data Atree =  NumAxiom (Aexp, State, Numeral)
             | VarAxiom (Aexp, State, Numeral)
             | AddRule (Aexp, State, Numeral) Atree Atree
@@ -34,23 +37,17 @@ checkAtree (NumAxiom a@(Num m, _, n))
 
 checkAtree (VarAxiom a@(Var x, s, n)) = do
   m <- lookupState x s
-  case m == n of
-    True -> return a
-    otherwise -> fail ""
+  (m == n) ==> a
   
 checkAtree (AddRule a@(Add e1 e2, s, n) tree1 tree2) = do
   (e1', s1', n1') <- checkAtree tree1
   (e2', s2', n2') <- checkAtree tree2
-  case (n, e1, e2, s, s) == (n1' + n2', e1', e2', s1', s2') of
-    True -> return a
-    otherwise -> fail ""
+  ((n, e1, e2, s, s) == (n1' + n2', e1', e2', s1', s2')) ==> a
 
 checkAtree (MulRule a@(Mul e1 e2, s, n) tree1 tree2) = do
   (e1', s1', n1') <- checkAtree tree1
   (e2', s2', n2') <- checkAtree tree2
-  case (n, e1, e2, s, s) == (n1' * n2', e1', e2', s1', s2') of
-    True -> return a
-    otherwise -> fail ""
+  ((n, e1, e2, s, s) == (n1' * n2', e1', e2', s1', s2')) ==> a
 
 checkAtree _ = Nothing
 
@@ -71,35 +68,69 @@ checkBtree (FalseAxiom b@(F, _, False)) = Just b
 checkBtree (LeqRule b@(Leq e1 e2, s, r) tree1 tree2) = do
   (e1', s1', n1') <- checkAtree tree1
   (e2', s2', n2') <- checkAtree tree2
-  case (r, e1, e2, s, s) == (n1' <= n2', e1', e2', s1', s2') of
-    True -> return b
-    otherwise -> fail ""
+  ((r, e1, e2, s, s) == (n1' <= n2', e1', e2', s1', s2')) ==> b
 
 checkBtree (NotRule b@(Not e, s, r) tree) = do
   (e', s', r') <- checkBtree tree
-  case (r, e, s) == (not r', e', s') of
-    True -> return b
-    otherwise -> fail ""
+  ((r, e, s) == (not r', e', s')) ==> b
 
 checkBtree (AndRule b@(And e1 e2, s, r) tree1 tree2) = do
   (e1', s1', r1') <- checkBtree tree1
   (e2', s2', r2') <- checkBtree tree2
-  case (r, e1, e2, s, s) == (r1' && r2', e1', e2', s1', s2') of
-    True -> return b
-    otherwise -> fail ""
+  ((r, e1, e2, s, s) == (r1' && r2', e1', e2', s1', s2')) ==> b
 
 checkBtree (OrRule b@(Or e1 e2, s, r) tree1 tree2) = do
   (e1', s1', r1') <- checkBtree tree1
   (e2', s2', r2') <- checkBtree tree2
-  case (r, e1, e2, s, s) == (r1' || r2', e1', e2', s1', s2') of
-    True -> return b
-    otherwise -> fail ""
+  ((r, e1, e2, s, s) == (r1' || r2', e1', e2', s1', s2')) ==> b
 
 checkBtree _ = Nothing
 
 
+data Ctree =  SkipAxiom (Com, State, State)
+            | AssignRule (Com, State, State) Atree
+            | SeqRule (Com, State, State) Ctree Ctree
+            | IfRuleT (Com, State, State) Btree Ctree
+            | IfRuleF (Com, State, State) Btree Ctree
+            | WhileRuleF (Com, State, State) Btree
+            | WhileRuleT (Com, State, State) Btree Ctree Ctree
 
---checkCtree :: CTree -> Maybe (Com, State, State)
+checkCtree :: Ctree -> Maybe (Com, State, State)
+
+checkCtree (SkipAxiom c@(Skip, s1, s2))
+  | s1 == s2 = Just c
+
+checkCtree (AssignRule c@(Assign x e, s1, s2) tree) = do
+  (e', s', n') <- checkAtree tree
+  let s'' = insertState (x, n') s'
+  ((e, s1, s2) == (e', s', s'')) ==> c
+
+checkCtree (SeqRule c@(Seq c1 c2, s1, s3) tree1 tree2) = do
+  (c1', s1', s2') <- checkCtree tree1
+  (c2', s2'', s3'') <- checkCtree tree2
+  ((c1, c2, s1, s2', s3) == (c1', c2', s1', s2'', s3'')) ==> c
+
+checkCtree (IfRuleT c@(If b com _, s1, s2) tree1 tree2) = do
+  (b', s1', r') <- checkBtree tree1
+  (com', s1'', s2'') <- checkCtree tree2
+  ((r', b, com, s1, s1, s2) == (True, b', com', s1', s1'', s2'')) ==> c
+
+checkCtree (IfRuleF c@(If b _ com, s1, s2) tree1 tree2) = do
+  (b', s1', r') <- checkBtree tree1
+  (com', s1'', s2'') <- checkCtree tree2
+  ((r', b, com, s1, s1, s2) == (False, b', com', s1', s1'', s2'')) ==> c
+
+checkCtree (WhileRuleF c@(While b _, s1, s2) tree) = do
+  (b', s1', r') <- checkBtree tree
+  ((r', b, s1, s1) == (False, b', s1', s2)) ==> c
+
+checkCtree (WhileRuleT c@(While b com, s1, s3) tree1 tree2 tree3) = do
+  (b', s1', r') <- checkBtree tree1
+  (com'', s1'', s2'') <- checkCtree tree2
+  (while''', s2''', s3''') <- checkCtree tree3
+  ((r', b, s1, com, s1, While b com, s2'', s3) == (True, b', s1', com'', s1'', while''', s2''', s3''')) ==> c
+
+checkCtree _ = Nothing
 
 -- unit tests
 
@@ -246,6 +277,266 @@ checkABCTreeTests =
     Just (expr, [], True)  @=?
     checkBtree (OrRule (expr, [], True) (FalseAxiom (F, [], False)) (TrueAxiom (T, [], True)))
 
+  , testCase "Ctree: Skip, incorrect" $
+    Nothing @=?
+    checkCtree (SkipAxiom (Skip, [], [("x", 2)]))
+  , testCase "Ctree: Skip, correct" $
+    Just (Skip, [("x", 2)], [("x", 2)]) @=?
+    checkCtree (SkipAxiom (Skip, [("x", 2)], [("x", 2)]))
+
+  , testCase "Ctree: Assign, incorrect 1" $
+    Nothing @=?
+    checkCtree (AssignRule (Assign "x" (Num 2), [], [("x", 3)]) (NumAxiom (Num 2, [], 2)))
+  , testCase "Ctree: Assign, incorrect 2" $
+    Nothing @=?
+    checkCtree (AssignRule (Assign "x" (Num 2), [], [("x", 3)]) (NumAxiom (Num 3, [], 3)))
+  , testCase "Ctree: Assign, correct" $
+    Just (Assign "x" (Num 2), [], [("x", 2)]) @=?
+    checkCtree (AssignRule (Assign "x" (Num 2), [], [("x", 2)]) (NumAxiom (Num 2, [], 2)))
+
+  , testCase "Ctree: Seq, incorrect 1" $
+    let com1 = Assign "x" (Num 2) in
+    let com2 = Assign "y" (Num 1) in
+    let s1 = [] in
+    let s2 = [("x", 2)] in
+    let s3 = [("x", 2), ("y", 1)] in
+    let s3' = [("x", 2), ("y", 0)] in
+    let tree1 = (AssignRule (com1, s1, s2) (NumAxiom (Num 2, [], 2))) in
+    let tree2 = (AssignRule (com2, s2, s3) (NumAxiom (Num 1, [], 1))) in
+    Nothing @=?
+    checkCtree (SeqRule (Seq com1 com2, s1, s3') tree1 tree2)
+  , testCase "Ctree: Seq, incorrect 2" $
+    let com1 = Assign "x" (Num 2) in
+    let com2 = Assign "y" (Num 1) in
+    let s1 = [] in
+    let s2 = [("x", 2)] in
+    let s3 = [("x", 2), ("y", 1)] in
+    let tree1 = (AssignRule (com1, s1, s2) (NumAxiom (Num 2, [], 2))) in
+    let tree2 = (AssignRule (Assign "y" (Num 5), s2, s3) (NumAxiom (Num 5, [], 5))) in
+    Nothing @=?
+    checkCtree (SeqRule (Seq com1 com2, s1, s3) tree1 tree2)
+  , testCase "Ctree: Seq, incorrect 3" $
+    let com1 = Assign "x" (Num 2) in
+    let com2 = Assign "y" (Num 1) in
+    let s1 = [] in
+    let s2 = [("x", 2)] in
+    let s3 = [("x", 2), ("y", 1)] in
+    let tree1 = (AssignRule (com1, [("x", 0)], s2) (NumAxiom (Num 2, [], 2))) in
+    let tree2 = (AssignRule (com2, s2, s3) (NumAxiom (Num 1, [], 1))) in
+    Nothing @=?
+    checkCtree (SeqRule (Seq com1 com2, s1, s3) tree1 tree2)
+  , testCase "Ctree: Seq, incorrect 4" $
+    let com1 = Assign "x" (Num 2) in
+    let com2 = Assign "y" (Num 1) in
+    let s1 = [] in
+    let s2 = [("x", 2)] in
+    let s3 = [("x", 2), ("y", 1)] in
+    let tree1 = (AssignRule (com1, s1, s2) (NumAxiom (Num 2, [], 2))) in
+    let tree2 = (AssignRule (com2, [("x",2),("y", 0)], s3) (NumAxiom (Num 1, [], 1))) in
+    Nothing @=?
+    checkCtree (SeqRule (Seq com1 com2, s1, s3) tree1 tree2)
+  , testCase "Ctree: Seq, correct 1" $
+    let com1 = Assign "x" (Num 2) in
+    let com2 = Assign "y" (Num 1) in
+    let s1 = [] in
+    let s2 = [("x", 2)] in
+    let s3 = [("x", 2), ("y", 1)] in
+    let tree1 = (AssignRule (com1, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    let tree2 = (AssignRule (com2, s2, s3) (NumAxiom (Num 1, s2, 1))) in
+    Just (Seq com1 com2, s1, s3) @=?
+    checkCtree (SeqRule (Seq com1 com2, s1, s3) tree1 tree2)
+  , testCase "Ctree: Seq, correct 2" $
+    let aexp = Add (Var "x") (Num 1) in
+    let com = Assign "x" aexp in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 1)] in
+    let s3 = [("x", 2)] in
+    let tree1 = (AssignRule (com, s1, s2) (AddRule (aexp, s1, 1) (VarAxiom (Var "x", s1, 0)) (NumAxiom (Num 1, s1, 1)))) in
+    let tree2 = (AssignRule (com, s2, s3) (AddRule (aexp, s2, 2) (VarAxiom (Var "x", s2, 1)) (NumAxiom (Num 1, s2, 1)))) in
+    Just (Seq com com, s1, s3) @=?
+    checkCtree (SeqRule (Seq com com, s1, s3) tree1 tree2)
+
+  , testCase "Ctree: IfRuleT, incorrect 1" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (TrueAxiom (T, s1, True)) in
+    let tree2 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Nothing @=?
+    checkCtree (IfRuleT (If T com Skip, s1, s1) tree1 tree2)
+  , testCase "Ctree: IfRuleT, incorrect 2" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (TrueAxiom (T, s1, True)) in
+    let tree2 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Nothing @=?
+    checkCtree (IfRuleT (If T Skip com, s1, s2) tree1 tree2)
+  , testCase "Ctree: IfRuleT, incorrect 3" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (TrueAxiom (T, s1, True)) in
+    let tree2 = (AssignRule (Assign "x" (Num 3), s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Nothing @=?
+    checkCtree (IfRuleT (If T com Skip, s1, s2) tree1 tree2)
+  , testCase "Ctree: IfRuleT, incorrect 4" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (FalseAxiom (F, s1, False)) in
+    let tree2 = (AssignRule (Assign "x" (Num 2), s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Nothing @=?
+    checkCtree (IfRuleT (If T com Skip, s1, s2) tree1 tree2)
+  , testCase "Ctree: IfRuleT, incorrect 5" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (TrueAxiom (T, s1, True)) in
+    let tree2 = (AssignRule (com, [], s2) (NumAxiom (Num 2, [], 2))) in
+    Nothing @=?
+    checkCtree (IfRuleT (If T com Skip, s1, s2) tree1 tree2)
+  , testCase "Ctree: IfRuleT, incorrect 6" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (TrueAxiom (T, [], True)) in
+    let tree2 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Nothing @=?
+    checkCtree (IfRuleT (If T com Skip, s1, s2) tree1 tree2)
+  , testCase "Ctree: IfRuleT, correct" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (TrueAxiom (T, s1, True)) in
+    let tree2 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Just (If T com Skip, s1, s2) @=?
+    checkCtree (IfRuleT (If T com Skip, s1, s2) tree1 tree2)
+
+  , testCase "Ctree: IfRuleF, incorrect 1" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (FalseAxiom (F, s1, False)) in
+    let tree2 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Nothing @=?
+    checkCtree (IfRuleF (If F Skip com, s1, s1) tree1 tree2)
+  , testCase "Ctree: IfRuleF, incorrect 2" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (FalseAxiom (F, s1, False)) in
+    let tree2 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Nothing @=?
+    checkCtree (IfRuleF (If F com Skip, s1, s2) tree1 tree2)
+  , testCase "Ctree: IfRuleF, incorrect 3" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (FalseAxiom (F, s1, False)) in
+    let tree2 = (AssignRule (Assign "x" (Num 3), s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Nothing @=?
+    checkCtree (IfRuleF (If F Skip com, s1, s2) tree1 tree2)
+  , testCase "Ctree: IfRuleF, incorrect 4" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (TrueAxiom (T, s1, True)) in
+    let tree2 = (AssignRule (Assign "x" (Num 2), s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Nothing @=?
+    checkCtree (IfRuleF (If F Skip com , s1, s2) tree1 tree2)
+  , testCase "Ctree: IfRuleF, incorrect 5" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (FalseAxiom (F, s1, False)) in
+    let tree2 = (AssignRule (com, [], s2) (NumAxiom (Num 2, [], 2))) in
+    Nothing @=?
+    checkCtree (IfRuleF (If F Skip com, s1, s2) tree1 tree2)
+  , testCase "Ctree: IfRuleF, incorrect 6" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (FalseAxiom (F, [], False)) in
+    let tree2 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Nothing @=?
+    checkCtree (IfRuleF (If F Skip com, s1, s2) tree1 tree2)
+  , testCase "Ctree: IfRuleF, correct" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (FalseAxiom (F, s1, False)) in
+    let tree2 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    Just (If F Skip com, s1, s2) @=?
+    checkCtree (IfRuleF (If F Skip com, s1, s2) tree1 tree2)
+
+  , testCase "Ctree: WhileRuleF, incorrect 1" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (FalseAxiom (F, s1, False)) in
+    Nothing @=?
+    checkCtree (WhileRuleF (While F com, s1, s2) tree1)
+  , testCase "Ctree: WhileRuleF, incorrect 2" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (FalseAxiom (F, [], False)) in
+    Nothing @=?
+    checkCtree (WhileRuleF (While F com, s1, s1) tree1)
+  , testCase "Ctree: WhileRuleF, correct" $
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let tree1 = (FalseAxiom (F, s1, False)) in
+    Just (While F com, s1, s1) @=?
+    checkCtree (WhileRuleF (While F com, s1, s1) tree1)
+
+  , testCase "Ctree: WhileRuleT, incorrect 1" $
+    let b = (Leq (Var "x") (Num 0)) in
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let btree1 = (LeqRule (T, s1, True) (VarAxiom (Var "x", s1, 0)) (NumAxiom (Num 0, s1, 0))) in
+    let btree2 = (LeqRule (b, s2, False) (VarAxiom (Var "x", s2, 2)) (NumAxiom (Num 0, s2, 0))) in
+    let ctree1 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    let ctree2 = (WhileRuleF (While b com, s2, s2) btree2) in
+    Nothing @=?
+    checkCtree (WhileRuleT (While b com, s1, s2) btree1 ctree1 ctree2)
+  , testCase "Ctree: WhileRuleT, incorrect 2" $
+    let b = (Leq (Var "x") (Num 0)) in
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s1' = [("x", -1)] in
+    let s2 = [("x", 2)] in
+    let btree1 = (LeqRule (b, s1', True) (VarAxiom (Var "x", s1', -1)) (NumAxiom (Num 0, s1', 0))) in
+    let btree2 = (LeqRule (b, s2, False) (VarAxiom (Var "x", s2, 2)) (NumAxiom (Num 0, s2, 0))) in
+    let ctree1 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    let ctree2 = (WhileRuleF (While b com, s2, s2) btree2) in
+    Nothing @=?
+    checkCtree (WhileRuleT (While b com, s1, s2) btree1 ctree1 ctree2)
+  , testCase "Ctree: WhileRuleT, incorrect 3" $
+    let b = (Leq (Var "x") (Num 0)) in
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let btree1 = (LeqRule (b, s1, True) (VarAxiom (Var "x", s1, 0)) (NumAxiom (Num 0, s1, 0))) in
+    let btree2 = (LeqRule (b, s2, False) (VarAxiom (Var "x", s2, 2)) (NumAxiom (Num 0, s2, 0))) in
+    let ctree1 = (SkipAxiom (Skip, s2, s2)) in
+    let ctree2 = (WhileRuleF (While b Skip, s2, s2) btree2) in
+    Nothing @=?
+    checkCtree (WhileRuleT (While b com, s1, s2) btree1 ctree1 ctree2)
+  , testCase "Ctree: WhileRuleT, correct" $
+    let b = (Leq (Var "x") (Num 0)) in
+    let com = Assign "x" (Num 2) in
+    let s1 = [("x", 0)] in
+    let s2 = [("x", 2)] in
+    let btree1 = (LeqRule (b, s1, True) (VarAxiom (Var "x", s1, 0)) (NumAxiom (Num 0, s1, 0))) in
+    let btree2 = (LeqRule (b, s2, False) (VarAxiom (Var "x", s2, 2)) (NumAxiom (Num 0, s2, 0))) in
+    let ctree1 = (AssignRule (com, s1, s2) (NumAxiom (Num 2, s1, 2))) in
+    let ctree2 = (WhileRuleF (While b com, s2, s2) btree2) in
+    Just (While b com, s1, s2) @=?
+    checkCtree (WhileRuleT (While b com, s1, s2) btree1 ctree1 ctree2)
   ]
 
 -- testing stuff
