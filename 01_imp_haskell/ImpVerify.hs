@@ -27,7 +27,6 @@ data Atree =  NumAxiom (Aexp, State, Numeral)
             | AddRule (Aexp, State, Numeral) Atree Atree
             | MulRule (Aexp, State, Numeral) Atree Atree
 
-
 checkAtree :: Atree -> Maybe (Aexp, State, Numeral)
 
 checkAtree (NumAxiom a@(Num m, _, n))
@@ -53,8 +52,8 @@ checkAtree (MulRule a@(Mul e1 e2, s, n) tree1 tree2) = do
     True -> return a
     otherwise -> fail ""
 
-
 checkAtree _ = Nothing
+
 
 data Btree =  TrueAxiom (Bexp, State, Bool)
             | FalseAxiom (Bexp, State, Bool)
@@ -62,7 +61,6 @@ data Btree =  TrueAxiom (Bexp, State, Bool)
             | NotRule (Bexp, State, Bool) Btree
             | AndRule (Bexp, State, Bool) Btree Btree
             | OrRule (Bexp, State, Bool) Btree Btree
-
 
 checkBtree :: Btree -> Maybe (Bexp, State, Bool)
 
@@ -77,6 +75,25 @@ checkBtree (LeqRule b@(Leq e1 e2, s, r) tree1 tree2) = do
     True -> return b
     otherwise -> fail ""
 
+checkBtree (NotRule b@(Not e, s, r) tree) = do
+  (e', s', r') <- checkBtree tree
+  case (r, e, s) == (not r', e', s') of
+    True -> return b
+    otherwise -> fail ""
+
+checkBtree (AndRule b@(And e1 e2, s, r) tree1 tree2) = do
+  (e1', s1', r1') <- checkBtree tree1
+  (e2', s2', r2') <- checkBtree tree2
+  case (r, e1, e2, s, s) == (r1' && r2', e1', e2', s1', s2') of
+    True -> return b
+    otherwise -> fail ""
+
+checkBtree (OrRule b@(Or e1 e2, s, r) tree1 tree2) = do
+  (e1', s1', r1') <- checkBtree tree1
+  (e2', s2', r2') <- checkBtree tree2
+  case (r, e1, e2, s, s) == (r1' || r2', e1', e2', s1', s2') of
+    True -> return b
+    otherwise -> fail ""
 
 checkBtree _ = Nothing
 
@@ -185,9 +202,49 @@ checkABCTreeTests =
     Just (Leq (Var "x") (Num 3), state, False) @=?
     checkBtree (LeqRule (Leq (Var "x") (Num 3), state, False) (VarAxiom (Var "x", state, 9)) (NumAxiom (Num 3, state, 3)))
 
-  --, testCase "Btree: Not, incorrect" $
-  --  Nothing @=?
-  --  checkBtree (NotRule (Not T, [], True)) (TrueAxiom (T, [], True))
+  , testCase "Btree: Not, incorrect 1" $
+    Nothing @=?
+    checkBtree (NotRule (Not T, [], True) (TrueAxiom (T, [], True)))
+  , testCase "Btree: Not, incorrect 2" $
+    Nothing @=?
+    checkBtree (NotRule (Not T, [], False) (TrueAxiom (T, [("x", 1)], True)))
+  , testCase "Btree: Not, correct" $
+    Just (Not F, [], True) @=?
+    checkBtree (NotRule (Not F, [], True) (FalseAxiom (F, [], False)))
+
+  , testCase "Btree: And, incorrect 1" $
+    let expr = And T T in
+    Nothing @=?
+    checkBtree (AndRule (expr, [], False) (TrueAxiom (T, [], True)) (TrueAxiom (T, [], True)))
+  , testCase "Btree: And, incorrect 2" $
+    let expr = And T T in
+    Nothing @=?
+    checkBtree (AndRule (expr, [], True) (FalseAxiom (F, [], False)) (TrueAxiom (T, [], True)))
+  , testCase "Btree: And, incorrect 3" $
+    let expr = And T T in
+    Nothing @=?
+    checkBtree (AndRule (expr, [], True) (TrueAxiom (T, [], True)) (TrueAxiom (T, [("x", 2)], True)))
+  , testCase "Btree: And, correct" $
+    let expr = And T T in
+    Just (expr, [], True)  @=?
+    checkBtree (AndRule (expr, [], True) (TrueAxiom (T, [], True)) (TrueAxiom (T, [], True)))
+
+  , testCase "Btree: Or, incorrect 1" $
+    let expr = Or F T in
+    Nothing @=?
+    checkBtree (OrRule (expr, [], False) (FalseAxiom (F, [], False)) (TrueAxiom (T, [], True)))
+  , testCase "Btree: Or, incorrect 2" $
+    let expr = Or T T in
+    Nothing @=?
+    checkBtree (OrRule (expr, [], True) (TrueAxiom (T, [], True)) (FalseAxiom (F, [], False)))
+  , testCase "Btree: Or, incorrect 3" $
+    let expr = Or F F in
+    Nothing @=?
+    checkBtree (OrRule (expr, [], False) (FalseAxiom (F, [], False)) (FalseAxiom (F, [("x", 2)], False)))
+  , testCase "Btree: Or, correct" $
+    let expr = Or F T in
+    Just (expr, [], True)  @=?
+    checkBtree (OrRule (expr, [], True) (FalseAxiom (F, [], False)) (TrueAxiom (T, [], True)))
 
   ]
 
