@@ -74,15 +74,17 @@ main(_) :-
 
 	%% x := 10;
 	%% x := 3 + x
+
 	P1 = seq(assign(x, num(10)),
 			 assign(x, add(num(3),var(x)))),
 	execute(P1),
 
 	%% x := 5
-	%% if (x == 20) or (x <= 5) 
-	%% 	x := 10 * x
-	%% else
-	%% 	skip
+	%% if (x == 20) or (x <= 5) {
+	%%   x := 10 * x
+	%% } else {
+	%%   skip
+	%% }
 	
 	P2 = seq(assign(x, num(5)),
 			 if(or(eq(var(x), num(20)), leq(var(x), num(5))),
@@ -111,22 +113,22 @@ main(_) :-
 	%% f1 := 1;
 	%% f2 := 1;
 	%% if n == 0 {
-	%% 	result := f1
+	%% 	 result := f1
 	%% } else {
-	%% 	if n == 1 {
-	%% 		result := f2
-	%% 	} else {
-	%% 		f3 := f1 + f2;
-	%% 		i := 2;
-	%% 		while not (i == n) {
-	%% 			tmp := f3 + f2;
-	%% 			f1 := f2;
-	%% 			f2 := f3;
-	%% 			f3 := tmp;
-	%% 			i := i + 1
-	%% 		};
-	%% 		result := f3
-	%% 	}
+	%% 	 if n == 1 {
+	%% 	   result := f2
+	%% 	 } else {
+	%% 	   f3 := f1 + f2;
+	%% 	   i := 2;
+	%% 	   while not (i == n) {
+	%% 	     tmp := f3 + f2;
+	%% 	     f1 := f2;
+	%% 	     f2 := f3;
+	%% 	     f3 := tmp;
+	%% 	     i := i + 1
+	%% 	   };
+	%% 	   result := f3
+	%% 	 }
 	%% }
 
 	P4 = seq(assign(n, num(12)),
@@ -149,7 +151,6 @@ main(_) :-
 		 		)
 		 	)
 		 	))),
-
 	execute(P4).
 
 

@@ -1,3 +1,6 @@
+-- Piotr Krzemiński, Semantyka Języków Programowania, 2013/14
+-- Lista 1, zad. 2
+
 module ImpVerify where
 
 import Test.HUnit (Assertion, (@=?), runTestTT, Test(..), Counts(..))
