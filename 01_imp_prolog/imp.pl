@@ -17,7 +17,7 @@ aexp(add(A1, A2), S, N) :-
 	aexp(A1, S, N1),
 	aexp(A2, S, N2),
 	N is N1 + N2.
-aexp(subl(A1, A2), S, N) :-
+aexp(sub(A1, A2), S, N) :-
 	aexp(A1, S, N1),
 	aexp(A2, S, N2),
 	N is N1 - N2.
@@ -43,30 +43,30 @@ bexp(eq(A1, A2), S) :-
 	aexp(A1, S, N),
 	aexp(A2, S, N).
 
-cexp(skip, S, S) :- !.
-cexp(assign(X, A), S, S1) :-
+stmt(skip, S, S) :- !.
+stmt(assign(X, A), S, S1) :-
 	aexp(A, S, N),
 	insertState(S, (X, N), S1).
-cexp(seq(C1, C2), S, S3) :-
-	cexp(C1, S, S2),
-	cexp(C2, S2, S3).
-cexp(if(B, C, _), S, S1) :-
+stmt(seq(C1, C2), S, S3) :-
+	stmt(C1, S, S2),
+	stmt(C2, S2, S3).
+stmt(if(B, C, _), S, S1) :-
 	bexp(B, S), !,
-	cexp(C, S, S1).
-cexp(if(_, _, C), S, S1) :-
-	cexp(C, S, S1).
-cexp(while(B, C), S, S2) :-
+	stmt(C, S, S1).
+stmt(if(_, _, C), S, S1) :-
+	stmt(C, S, S1).
+stmt(while(B, C), S, S2) :-
 	bexp(B, S), !,
-	cexp(C, S, S1),
-	cexp(while(B, C), S1, S2).
-cexp(while(_, _), S, S).
+	stmt(C, S, S1),
+	stmt(while(B, C), S1, S2).
+stmt(while(_, _), S, S).
 
 
 execute(Program) :-
 	nl,
 	write('Program: '), write(Program), nl,
 	write('Initial memory: '), write([]), nl,
-	cexp(Program, [], S),
+	stmt(Program, [], S),
 	write('Final memory: '), write(S), nl.
 
 
@@ -79,14 +79,14 @@ main(_) :-
 			 assign(x, add(num(3),var(x)))),
 	execute(P1),
 
-	%% x := 5
+	%% x := 100
 	%% if (x == 20) or (x <= 5) {
 	%%   x := 10 * x
 	%% } else {
 	%%   skip
 	%% }
 	
-	P2 = seq(assign(x, num(5)),
+	P2 = seq(assign(x, num(100)),
 			 if(or(eq(var(x), num(20)), leq(var(x), num(5))),
 			 	assign(x,mul(num(10),var(x))),
 			 	skip)),
