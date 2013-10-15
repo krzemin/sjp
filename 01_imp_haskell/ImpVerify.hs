@@ -1,6 +1,8 @@
 -- Piotr Krzemiński, Semantyka Języków Programowania, 2013/14
 -- Lista 1, zad. 2
 
+{-# OPTION -WALL #-}
+
 module ImpVerify where
 
 import Test.HUnit (Assertion, (@=?), runTestTT, Test(..), Counts(..))
@@ -53,7 +55,6 @@ checkAtree (MulRule a@(Mul e1 e2, s, n) tree1 tree2) = do
   ((n, e1, e2, s, s) == (n1' * n2', e1', e2', s1', s2')) ==> a
 
 checkAtree _ = Nothing
-
 
 data Btree =  TrueAxiom (Bexp, State, Bool)
             | FalseAxiom (Bexp, State, Bool)
