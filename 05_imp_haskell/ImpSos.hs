@@ -3,35 +3,10 @@
 
 module ImpSos where
 
+import ImpAst
+import ImpMemory
 import Data.Maybe
 
-type Numeral = Int
-type Identifier = String
-data Aexp = Num Numeral
-          | Var Identifier
-          | Add Aexp Aexp
-          deriving (Show, Eq)
-data Bexp = T
-          | F
-          | Not Bexp
-          | And Bexp Bexp
-          | Or Bexp Bexp
-          | Leq Aexp Aexp
-          deriving (Show, Eq)
-data Com = Skip
-          | Assign Identifier Aexp
-          | Seq Com Com
-          | If Bexp Com Com
-          | While Bexp Com
-          deriving (Show, Eq)
-
-type State = [(Identifier, Numeral)]
-
-lookupState :: Identifier -> State -> Maybe Numeral
-lookupState = lookup
-
-insertState :: (Identifier, Numeral) -> State -> State
-insertState (x, n) lst = (x, n) : lst
 
 stepAexp :: (Aexp, State) -> (Aexp, State)
 
@@ -101,6 +76,9 @@ transitiveClosure (c, s) = transitiveClosure (c', s')
 	where (c', s') = stepCom (c, s)
 
 
+sos :: (Com, State) -> State
+sos = transitiveClosure
+
 main = do
 	putStrLn $ show $ stepAexp (Add (Var "x") (Num 4), [("x", 100)])
 	putStrLn $ show $ stepBexp (Or F (And T T), [])
@@ -108,5 +86,5 @@ main = do
 	putStrLn $ show $ stepCom (Assign "x" (Num 4), [])
 	putStrLn $ show $ stepCom (If T (Assign "x" (Num 4)) Skip, [])
 	putStrLn $ show $ stepCom (While (Or F T) (Assign "x" (Num 2)), [])
-	putStrLn $ show $ transitiveClosure (While (Leq (Var "x") (Num 10)) (Assign "x" (Add (Var "x") (Num 1))), [("x", 0)])
+	putStrLn $ show $ sos (While (Leq (Var "x") (Num 10)) (Assign "x" (Add (Var "x") (Num 1))), [("x", 0)])
 
