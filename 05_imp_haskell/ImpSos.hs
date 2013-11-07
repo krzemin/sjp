@@ -76,15 +76,37 @@ stepBexp (Leq a1 a2, s) = (Leq a1' a2, s)
 	where (a1', _) = stepAexp (a1, s)
 
 
+stepCom :: (Com, State) -> (Com, State)
+
+stepCom (Assign x (Num n), s) = (Skip, insertState (x, n) s)
+stepCom (Assign x a, s) = (Assign x a', s)
+	where (a', _) = stepAexp (a, s)
+
+stepCom (Seq Skip c2, s) = (c2, s)
+stepCom (Seq c1 c2, s) = (Seq c1' c2, s')
+	where (c1', s') = stepCom (c1, s)
+
+stepCom (If T c1 _, s) = (c1, s)
+stepCom (If F _ c2, s) = (c2, s)
+stepCom (If b c1 c2, s) = (If b' c1 c2, s)
+	where (b', _) = stepBexp (b, s)
+
+stepCom (While b c, s) = (If b (Seq c (While b c)) Skip, s)
 
 
+transitiveClosure :: (Com, State) -> State
 
+transitiveClosure (Skip, s) = s
+transitiveClosure (c, s) = transitiveClosure (c', s')
+	where (c', s') = stepCom (c, s)
 
 
 main = do
 	putStrLn $ show $ stepAexp (Add (Var "x") (Num 4), [("x", 100)])
 	putStrLn $ show $ stepBexp (Or F (And T T), [])
 	putStrLn $ show $ stepBexp (Leq (Num 3) (Add (Num 1) (Num 10)), [])
-
-
+	putStrLn $ show $ stepCom (Assign "x" (Num 4), [])
+	putStrLn $ show $ stepCom (If T (Assign "x" (Num 4)) Skip, [])
+	putStrLn $ show $ stepCom (While (Or F T) (Assign "x" (Num 2)), [])
+	putStrLn $ show $ transitiveClosure (While (Leq (Var "x") (Num 10)) (Assign "x" (Add (Var "x") (Num 1))), [("x", 0)])
 
