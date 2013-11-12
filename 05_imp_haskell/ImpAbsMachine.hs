@@ -60,6 +60,7 @@ stepMachine (B F, (Sel _ c2):st, s) = (C c2, st, s)
 stepMachine (C (While b c), st, s) = (C (If b (Seq c (While b c)) Skip), st, s)
 
 transitiveClosure :: (Current, [StackElem], State) -> State
+
 transitiveClosure (C Skip, [], s) = s
 transitiveClosure (c, st, s) = transitiveClosure (c', st', s')
 	where (c', st', s') = stepMachine (c, st, s)
