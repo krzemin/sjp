@@ -7,10 +7,38 @@ import ImpMemory
 import Data.Maybe
 
 
-data EvalCtxA = Hole Aexp
+data EvalCtxA = Hole
               | AddL EvalCtxA Aexp
-              | AddR Aexp EvalCtxA
+              | AddR Numeral EvalCtxA
               deriving (Show, Eq)
+
+
+plug :: EvalCtxA -> Aexp -> Aexp
+plug Hole a = a
+plug (AddL c a2) a1 = Add (plug c a1) a2 -- plug c (Add a1 a2)
+plug (AddR a1 c) a2 = Add a1 (plug c a2)
+
+data Dec = Val Numeral | Redex EvalCtxA Numeral Numeral
+						-- | RedexV Ctx Identifier
+--osobny typ Redex
+
+dec :: Aexp -> Dec
+
+dec (Num n) = Val n
+dec (Add (Num n1) a2) = case dec a2 of
+	Val n2 -> Redex Hole n1 n2
+	Redex c n1' n2' -> Redex (AddR n1 c) n1' n2'
+dec (Add a1 a2) = case dec a1 of
+	Redex c n1' n2' -> Redex (AddL c a2) n1' n2'
+
+plug' :: Dec -> Aexp
+
+-- forall aexp . plug' (dec aexp) == aexp
+
+contract :: Redex -> Aexp
+
+
+
 
 plug :: Aexp -> EvalCtxA
 plug (Num n) = Hole (Num n)
@@ -30,5 +58,5 @@ stepAexp (Hole (Add (Num n1) (Num n2)), s) = (Hole (Num (n1 + n2)), s)
 main = do
     putStrLn $ show $ stepAexp (Hole (Var "x"), [("x", 10)])
     let a = Add (Add (Num 5) (Num 4)) (Num 2)
-    --let aPlugged = plug a
-    --putStrLn $ show $ aPlugged
+    let aPlugged = plug a
+    putStrLn $ show $ aPlugged
