@@ -1,4 +1,4 @@
-module DenotImp where
+module DenotImpOnlyFailuresDirect where
 
 import           Data.Maybe
 
