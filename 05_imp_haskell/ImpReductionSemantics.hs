@@ -13,10 +13,18 @@ data EvalCtxA = Hole
               deriving (Show, Eq)
 
 
-plug :: EvalCtxA -> Aexp -> Aexp
-plug Hole a = a
-plug (AddL c a2) a1 = Add (plug c a1) a2 -- plug c (Add a1 a2)
-plug (AddR a1 c) a2 = Add a1 (plug c a2)
+--plug :: EvalCtxA -> Aexp -> Aexp
+--plug Hole a = a
+--plug (AddL c a2) a1 = Add (plug c a1) a2 -- plug c (Add a1 a2)
+--plug (AddR a1 c) a2 = Add a1 (plug c a2)
+
+plugA :: EvalCtxA -> Aexp -> Aexp
+plugA Hole a = a
+plugA (AddL c a2) a1 = plugA c (Add a1 a2)
+plugA (AddR a1 c) a2 = plugA (Add a1 a2) c
+
+
+
 
 data Dec = Val Numeral | Redex EvalCtxA Numeral Numeral
 						-- | RedexV Ctx Identifier
