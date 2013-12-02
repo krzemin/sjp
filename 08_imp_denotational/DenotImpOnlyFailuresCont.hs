@@ -1,4 +1,4 @@
-module DenotImpOnlyFailuresDirect where
+module DenotImpOnlyFailuresCont where
 
 import           Data.Maybe
 
@@ -43,24 +43,19 @@ evalBexp (Leq a0 a1) s = evalAexp a0 s <= evalAexp a1 s
 
 data SigmaPeak = Normal State | Aborted State deriving (Show, Eq)
 
-liftSigma :: (State -> SigmaPeak) -> SigmaPeak -> SigmaPeak
-liftSigma _ (Aborted s) = Aborted s
-liftSigma f (Normal s) = f s
-
-evalCom :: Com -> State -> SigmaPeak
-evalCom Skip s = Normal s
-evalCom (Assign x a) s = Normal (insertState (x, evalAexp a s) s)
-evalCom (Seq c0 c1) s = (liftSigma $ evalCom c1) (evalCom c0 s)
-evalCom (If b c0 c1) s = if evalBexp b s then evalCom c0 s else evalCom c1 s
-evalCom (While b c) s = fix fun (Normal s)
+evalCom :: Com -> (State -> SigmaPeak) -> State -> SigmaPeak
+evalCom Skip k s = k s
+evalCom (Assign x a) k s = k (insertState (x, evalAexp a s) s)
+evalCom (Seq c0 c1) k s = evalCom c0 (evalCom c1 k) s
+evalCom (If b c0 c1) k s = if evalBexp b s then evalCom c0 k s else evalCom c1 k s
+evalCom (While b c) k s = fix fun s
   where
-    fun :: (SigmaPeak -> SigmaPeak) -> SigmaPeak -> SigmaPeak
-    fun g (Normal si) = if evalBexp b si then  g (evalCom c si) else Normal si
-    fun _ (Aborted si) = Aborted si
+    fun :: (State -> SigmaPeak) -> State -> SigmaPeak
+    fun w si = if evalBexp b si then evalCom c w si else k si
     fix :: (a -> a) -> a
     fix f = let r = f r in r
 
-evalCom Fail s = Aborted s
+evalCom Fail _ s = Aborted s
 
 
 main :: IO ()
@@ -69,8 +64,7 @@ main = do
   print $ evalAexp (Add (Var "x") (Add (Num 2) (Num 1))) [("x", 6)]
   print $ evalBexp (Not (Leq (Num 4) (Var "x"))) [("x", 6)]
   let prog1 = While (Leq (Var "x") (Num 5)) (Seq (Assign "y" (Add (Var "y") (Var "y"))) (Assign "x" (Add (Var "x") (Num 1))))
-  print $ evalCom prog1 [("x", 0), ("y", 2)]
+  print $ evalCom prog1 Normal [("x", 0), ("y", 2)]
   let prog2 = While T Fail
-  print $ evalCom prog2 []
-
-
+  print $ evalCom prog2 Normal []
+  
