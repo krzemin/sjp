@@ -29,7 +29,7 @@ data DeclV = Dim IdeV Aexp deriving (Show, Eq)
 data DeclP = Proc IdeP IdeV Com deriving (Show, Eq)
 
 type Loc = Int
-data Store = Sto [(Loc, Int)] Loc -- memory and next free location
+data Store = Sto [(Loc, Int)] Loc deriving (Show, Eq) -- memory and next free location
 type EnvV = [(IdeV, Loc)]
 type EnvP = [(IdeP, Store -> Store)]
 
@@ -68,6 +68,7 @@ lookupV envV sto v = do
 updateSto :: Loc -> Int -> [(Loc, Int)] -> [(Loc, Int)]
 updateSto loc val = update
   where
+    update [] = [(loc, val)]
     update ((x, v) : rest)
       | x == loc = (loc, val) : rest
       | otherwise = (x, v) : update rest
@@ -87,9 +88,10 @@ evalBexp (Leq a0 a1) envV sto = evalAexp a0 envV sto <= evalAexp a1 envV sto
 
 evalCom :: Com -> EnvV -> EnvP -> Store -> Store
 evalCom Skip _ _ sto = sto
-evalCom (Assign x a) envV _ s@(Sto sto next) = Sto (updateSto loc val sto) next
+evalCom (Assign x a) envV _ s@(Sto sto next) = Sto sto' next
   where
-    loc = fromJust $ lookupV envV sto x
+    sto' = updateSto loc val sto
+    loc = fromJust $ lookupEnvV envV x
     val = evalAexp a envV s
 evalCom (Seq c0 c1) envV envP sto = evalCom c1 envV envP $ evalCom c0 envV envP sto
 evalCom (If b c0 c1) envV envP sto =
@@ -124,9 +126,22 @@ evalDeclsP (Proc name _ com : decls) envV envP = evalDeclsP decls envV envP'
     envP' = updateEnvP name g envP
     g = evalCom com envV envP
 
+prog0 :: Com
+prog0 = Block
+          [Dim "x" (Num 5), Dim "y" (Num 25)]
+          []
+          Skip
 
 prog1 :: Com
 prog1 = Block
-					[Dim "x" (Num 5)]
-					[Proc "addx" "a" (Assign "x" (Add (Var "x") (Var "a")))]
+					[Dim "x" (Num 15), Dim "y" (Num 0)]
+					[Proc "addx" "a" (Assign "x" (Add (Var "x") (Var "x")))]
 					(Call "addx" (Num 100))
+
+main :: IO ()
+main = do
+  print "prog0"
+  print $ evalCom prog0 [] [] (Sto [] 0)
+  print "prog1"
+  print $ evalCom prog1 [] [] (Sto [] 0)
+
