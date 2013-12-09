@@ -73,6 +73,14 @@ updateSto loc val = update
       | x == loc = (loc, val) : rest
       | otherwise = (x, v) : update rest
 
+-- simple garbage collector
+
+gc :: Loc -> Store -> Store
+gc 0 s = s
+gc next (Sto sto _) = Sto sto' next
+  where
+    sto' = filter (\(loc, _) -> loc < next) sto
+
 -- denotational semantics
 
 evalAexp :: Aexp -> EnvV -> Store -> Int
@@ -104,10 +112,11 @@ evalCom (While b c) envV envP sto = fix fun sto
     fun g st = if evalBexp b envV st then g (evalCom c envV envP st) else st 
     fix :: (a -> a) -> a
     fix f = let r = f r in r
-evalCom (Block declsV declsP c) envV envP sto = evalCom c envV' envP' sto'
-  where
-    (envV', sto') = evalDeclsV declsV (envV, sto)
-    envP' = evalDeclsP declsP envV' envP
+evalCom (Block declsV declsP c) envV envP sto@(Sto _ next) =
+  gc next $ evalCom c envV' envP' sto'
+    where
+      (envV', sto') = evalDeclsV declsV (envV, sto)
+      envP' = evalDeclsP declsP envV' envP
 evalCom (Call p a) envV envP sto = procSem n sto
   where
     procSem = fromJust $ lookupEnvP envP p
@@ -127,7 +136,7 @@ evalDeclsP [] _ envP = envP
 evalDeclsP (Proc name arg com : decls) envV envP = evalDeclsP decls envV envP'
   where
     envP' = updateEnvP name g envP
-    g n (Sto sto next) = evalCom com envV' envP (Sto sto' next')
+    g n (Sto sto next) = gc next $ evalCom com envV' envP (Sto sto' next')
       where
         sto' = updateSto argLoc n sto
         next' = new next
@@ -153,13 +162,26 @@ prog2 = Block
           [Proc "twice_to_x" "a" (Assign "x" (Add (Var "a") (Var "a")))]
           (Call "twice_to_x" (Num 100))
 
+prog3 :: Com
+prog3 = Block
+          [Dim "x" (Num 0)]
+          [Proc "p" "_" (Assign "x" (Add (Var "x") (Num 1))),
+           Proc "q" "_" (Call "p" (Num 0))]
+          (Block
+            []
+            [Proc "p" "_" (Assign "x" (Num 7))]
+            (Call "q" (Num 0))
+            )
+
 
 main :: IO ()
 main = do
-  print "prog0"
+  print "prog0 -- block declarations"
   print $ evalCom prog0 [] [] (Sto [] 0)
-  print "prog1"
+  print "prog1 -- procedure with parameter"
   print $ evalCom prog1 [] [] (Sto [] 0)
-  print "prog2"
+  print "prog2 -- procedure with parameter"
   print $ evalCom prog2 [] [] (Sto [] 0)
+  print "prog3 -- nested blocks (procedure binding)"
+  print $ evalCom prog3 [] [] (Sto [] 0)
 
