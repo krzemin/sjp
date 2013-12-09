@@ -31,7 +31,7 @@ data DeclP = Proc IdeP IdeV Com deriving (Show, Eq)
 type Loc = Int
 data Store = Sto [(Loc, Int)] Loc deriving (Show, Eq) -- memory and next free location
 type EnvV = [(IdeV, Loc)]
-type EnvP = [(IdeP, Store -> Store)]
+type EnvP = [(IdeP, Int -> Store -> Store)]
 
 -- memory management
 new :: Loc -> Loc
@@ -48,10 +48,10 @@ updateEnvV x loc = update
       | x == y = (x, loc) : rest
       | otherwise = (y, l) : update rest
 
-lookupEnvP :: EnvP -> IdeP -> Maybe (Store -> Store)
+lookupEnvP :: EnvP -> IdeP -> Maybe (Int -> Store -> Store)
 lookupEnvP envP p = lookup p envP
 
-updateEnvP :: IdeP -> (Store -> Store) -> EnvP -> EnvP
+updateEnvP :: IdeP -> (Int -> Store -> Store) -> EnvP -> EnvP
 updateEnvP p proc = update
   where
     update [] = [(p, proc)]
@@ -108,7 +108,10 @@ evalCom (Block declsV declsP c) envV envP sto = evalCom c envV' envP' sto'
   where
     (envV', sto') = evalDeclsV declsV (envV, sto)
     envP' = evalDeclsP declsP envV' envP
-evalCom (Call p _) _ envP sto = (fromJust $ lookupEnvP envP p) sto
+evalCom (Call p a) envV envP sto = procSem n sto
+  where
+    procSem = fromJust $ lookupEnvP envP p
+    n = evalAexp a envV sto
 
 evalDeclsV :: [DeclV] -> (EnvV, Store) -> (EnvV, Store)
 evalDeclsV [] envSto = envSto
@@ -121,10 +124,16 @@ evalDeclsV (Dim x a : decls) (envV, s@(Sto sto next)) = evalDeclsV decls (envV',
 
 evalDeclsP :: [DeclP] -> EnvV -> EnvP -> EnvP
 evalDeclsP [] _ envP = envP
-evalDeclsP (Proc name _ com : decls) envV envP = evalDeclsP decls envV envP'
+evalDeclsP (Proc name arg com : decls) envV envP = evalDeclsP decls envV envP'
   where
     envP' = updateEnvP name g envP
-    g = evalCom com envV envP
+    g n (Sto sto next) = evalCom com envV' envP (Sto sto' next')
+      where
+        sto' = updateSto argLoc n sto
+        next' = new next
+        argLoc = next
+        envV' = updateEnvV arg argLoc envV
+
 
 prog0 :: Com
 prog0 = Block
@@ -134,9 +143,16 @@ prog0 = Block
 
 prog1 :: Com
 prog1 = Block
-					[Dim "x" (Num 15), Dim "y" (Num 0)]
-					[Proc "addx" "a" (Assign "x" (Add (Var "x") (Var "x")))]
-					(Call "addx" (Num 100))
+          [Dim "x" (Num 15)]
+          [Proc "addx" "a" (Assign "x" (Add (Var "a") (Var "x")))]
+          (Call "addx" (Num 100))
+
+prog2 :: Com
+prog2 = Block
+          [Dim "x" (Num 0)]
+          [Proc "twice_to_x" "a" (Assign "x" (Add (Var "a") (Var "a")))]
+          (Call "twice_to_x" (Num 100))
+
 
 main :: IO ()
 main = do
@@ -144,4 +160,6 @@ main = do
   print $ evalCom prog0 [] [] (Sto [] 0)
   print "prog1"
   print $ evalCom prog1 [] [] (Sto [] 0)
+  print "prog2"
+  print $ evalCom prog2 [] [] (Sto [] 0)
 
