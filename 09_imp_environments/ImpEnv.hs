@@ -40,15 +40,23 @@ new n = n + 1
 lookupEnvV :: EnvV -> IdeV -> Maybe Loc
 lookupEnvV envV v = lookup v envV
 
-lookupV :: EnvV -> Store -> IdeV -> Maybe Int
-lookupV envV (Sto sto _) v = do
+updateEnvV :: IdeV -> Loc -> EnvV -> EnvV
+updateEnvV x loc = update
+  where
+    update [] = [(x, loc)]
+    update ((y, l) : rest)
+      | x == y = (x, loc) : rest
+      | otherwise = (y, l) : update rest
+
+
+lookupV :: EnvV -> [(Loc, Int)] -> IdeV -> Maybe Int
+lookupV envV sto v = do
   loc <- lookupEnvV envV v
   lookup loc sto
 
-updateSto :: Loc -> Int -> Store -> Store
-updateSto loc val (Sto sto next)  = Sto sto' next
+updateSto :: Loc -> Int -> [(Loc, Int)] -> [(Loc, Int)]
+updateSto loc val = update
   where
-    sto' = update sto
     update ((x, v) : rest)
       | x == loc = (loc, val) : rest
       | otherwise = (x, v) : update rest
@@ -57,7 +65,7 @@ updateSto loc val (Sto sto next)  = Sto sto' next
 
 evalAexp :: Aexp -> EnvV -> Store -> Int
 evalAexp (Num n) _ _ = n
-evalAexp (Var x) envV sto = fromJust $ lookupV envV sto x
+evalAexp (Var x) envV (Sto sto _) = fromJust $ lookupV envV sto x
 evalAexp (Add a0 a1) envV sto = evalAexp a0 envV sto + evalAexp a1 envV sto
 
 evalBexp :: Bexp -> EnvV -> Store -> Bool
@@ -68,10 +76,10 @@ evalBexp (Leq a0 a1) envV sto = evalAexp a0 envV sto <= evalAexp a1 envV sto
 
 evalCom :: Com -> EnvV -> Store -> Store
 evalCom Skip _ sto = sto
-evalCom (Assign x a) envV sto = updateSto loc val sto
+evalCom (Assign x a) envV s@(Sto sto next) = Sto (updateSto loc val sto) next
   where
     loc = fromJust $ lookupV envV sto x
-    val = evalAexp a envV sto
+    val = evalAexp a envV s
 evalCom (Seq c0 c1) envV sto = evalCom c1 envV $ evalCom c0 envV sto
 evalCom (If b c0 c1) envV sto =
   if evalBexp b envV sto
@@ -83,6 +91,19 @@ evalCom (While b c) envV sto = fix fun sto
     fun g st = if evalBexp b envV st then g (evalCom c envV st) else st 
     fix :: (a -> a) -> a
     fix f = let r = f r in r
+evalCom (Block declsV _ c) envV sto = evalCom c envV' sto'
+  where
+    (envV', sto') = evalDeclsV declsV (envV, sto)
+
+
+evalDeclsV :: [DeclV] -> (EnvV, Store) -> (EnvV, Store)
+evalDeclsV [] envSto = envSto
+evalDeclsV (Dim x a : decls) (envV, s@(Sto sto next)) = evalDeclsV decls (envV', sto')
+  where
+    envV' = updateEnvV x loc envV
+    sto' = Sto (updateSto loc val sto) (new loc)
+    loc = next
+    val = evalAexp a envV s
 
 
 
