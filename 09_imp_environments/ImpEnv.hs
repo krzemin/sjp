@@ -31,7 +31,7 @@ data DeclP = Proc IdeP IdeV Com deriving (Show, Eq)
 type Loc = Int
 data Store = Sto [(Loc, Int)] Loc -- memory and next free location
 type EnvV = [(IdeV, Loc)]
-type EnvP = [(IdeP, Loc)]
+type EnvP = [(IdeP, Store -> Store)]
 
 -- memory management
 new :: Loc -> Loc
@@ -47,6 +47,17 @@ updateEnvV x loc = update
     update ((y, l) : rest)
       | x == y = (x, loc) : rest
       | otherwise = (y, l) : update rest
+
+lookupEnvP :: EnvP -> IdeP -> Maybe (Store -> Store)
+lookupEnvP envP p = lookup p envP
+
+updateEnvP :: IdeP -> (Store -> Store) -> EnvP -> EnvP
+updateEnvP p proc = update
+  where
+    update [] = [(p, proc)]
+    update ((q, proc') : rest)
+      | p == q = (p, proc) : rest
+      | otherwise = (q, proc') : update rest
 
 
 lookupV :: EnvV -> [(Loc, Int)] -> IdeV -> Maybe Int
@@ -74,27 +85,28 @@ evalBexp F _ _ = False
 evalBexp (Not b) envV sto = not $ evalBexp b envV sto
 evalBexp (Leq a0 a1) envV sto = evalAexp a0 envV sto <= evalAexp a1 envV sto
 
-evalCom :: Com -> EnvV -> Store -> Store
-evalCom Skip _ sto = sto
-evalCom (Assign x a) envV s@(Sto sto next) = Sto (updateSto loc val sto) next
+evalCom :: Com -> EnvV -> EnvP -> Store -> Store
+evalCom Skip _ _ sto = sto
+evalCom (Assign x a) envV _ s@(Sto sto next) = Sto (updateSto loc val sto) next
   where
     loc = fromJust $ lookupV envV sto x
     val = evalAexp a envV s
-evalCom (Seq c0 c1) envV sto = evalCom c1 envV $ evalCom c0 envV sto
-evalCom (If b c0 c1) envV sto =
+evalCom (Seq c0 c1) envV envP sto = evalCom c1 envV envP $ evalCom c0 envV envP sto
+evalCom (If b c0 c1) envV envP sto =
   if evalBexp b envV sto
-    then evalCom c0 envV sto
-    else evalCom c1 envV sto
-evalCom (While b c) envV sto = fix fun sto
+    then evalCom c0 envV envP sto
+    else evalCom c1 envV envP sto
+evalCom (While b c) envV envP sto = fix fun sto
   where
     fun :: (Store -> Store) -> Store -> Store
-    fun g st = if evalBexp b envV st then g (evalCom c envV st) else st 
+    fun g st = if evalBexp b envV st then g (evalCom c envV envP st) else st 
     fix :: (a -> a) -> a
     fix f = let r = f r in r
-evalCom (Block declsV _ c) envV sto = evalCom c envV' sto'
+evalCom (Block declsV declsP c) envV envP sto = evalCom c envV' envP' sto'
   where
     (envV', sto') = evalDeclsV declsV (envV, sto)
-
+    envP' = evalDeclsP declsP envV' envP
+evalCom (Call p _) _ envP sto = (fromJust $ lookupEnvP envP p) sto
 
 evalDeclsV :: [DeclV] -> (EnvV, Store) -> (EnvV, Store)
 evalDeclsV [] envSto = envSto
@@ -105,6 +117,12 @@ evalDeclsV (Dim x a : decls) (envV, s@(Sto sto next)) = evalDeclsV decls (envV',
     loc = next
     val = evalAexp a envV s
 
+evalDeclsP :: [DeclP] -> EnvV -> EnvP -> EnvP
+evalDeclsP [] _ envP = envP
+evalDeclsP (Proc name _ com : decls) envV envP = evalDeclsP decls envV envP'
+  where
+    envP' = updateEnvP name g envP
+    g = evalCom com envV envP
 
 
 prog1 :: Com
