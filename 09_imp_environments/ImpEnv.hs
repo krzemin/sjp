@@ -181,18 +181,36 @@ prog3 = Block
 
 prog4 :: Com
 prog4 = Block
-          [Dim "x" (Num 5)]
+          [Dim "x" (Num 0)]
+          [Proc "f" "n" (If
+              (Eq (Var "n") (Num 0))
+              Skip
+              (Assign "x" (Add (Var "x") (Num 1)) `sq`
+               Call "f" (Add (Var "n") (Num (-1))))
+            )]
+          (Call "f" (Num 50))
+
+prog5 :: Com
+prog5 = Block
+          [Dim "x" (Num 1)]
           [Proc "mulxby" "y" (Block
             [Dim "t" (Var "x")]
             [Proc "aux" "y'" (If
-                (Eq (Var "y'") (Num 1))
+                (Leq (Var "y'") (Num 1))
                 (Assign "x" (Var "t"))
                 (Assign "t" (Add (Var "t") (Var "x")) `sq`
                  Call "aux" (Add (Var "y'") (Num (-1))))
               )]
             (Call "aux" (Var "y"))
-            )]
-          (Call "mulxby" (Num 20))
+            ),
+          Proc "fact" "n" (If
+                (Eq (Var "n") (Num 0))
+                Skip
+                (Call "mulxby" (Var "n") `sq`
+                 Call "fact" (Add (Var "n") (Num (-1))))
+                )]
+          (Call "fact" (Num 15))
+
 
 main :: IO ()
 main = do
@@ -204,6 +222,8 @@ main = do
   print $ evalCom prog2 [] [] (Sto [] 0)
   print "prog3 -- nested blocks (procedure binding)"
   print $ evalCom prog3 [] [] (Sto [] 0)
-  print "prog4 -- recursion"
+  print "prog4 -- simple recursion"
   print $ evalCom prog4 [] [] (Sto [] 0)
+  print "prog5 -- advanced recursion (factorial)"
+  print $ evalCom prog5 [] [] (Sto [] 0)
 
