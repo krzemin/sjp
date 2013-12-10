@@ -1,6 +1,7 @@
 module ImpEnv where
 
 import Data.Maybe
+import Data.Function (fix)
 
 type IdeV = String
 type IdeP = String
@@ -13,6 +14,7 @@ data Aexp = Num Int
 data Bexp = T
           | F
           | Not Bexp
+          | Eq Aexp Aexp
           | Leq Aexp Aexp
           deriving (Show, Eq)
 
@@ -32,6 +34,11 @@ type Loc = Int
 data Store = Sto [(Loc, Int)] Loc deriving (Show, Eq) -- memory and next free location
 type EnvV = [(IdeV, Loc)]
 type EnvP = [(IdeP, Int -> Store -> Store)]
+
+-- smart constructors for convinient infix notation
+sq :: Com -> Com -> Com
+sq = Seq
+
 
 -- memory management
 new :: Loc -> Loc
@@ -93,6 +100,7 @@ evalBexp T _ _ = True
 evalBexp F _ _ = False
 evalBexp (Not b) envV sto = not $ evalBexp b envV sto
 evalBexp (Leq a0 a1) envV sto = evalAexp a0 envV sto <= evalAexp a1 envV sto
+evalBexp (Eq a0 a1) envV sto = evalAexp a0 envV sto == evalAexp a1 envV sto
 
 evalCom :: Com -> EnvV -> EnvP -> Store -> Store
 evalCom Skip _ _ sto = sto
@@ -110,8 +118,6 @@ evalCom (While b c) envV envP sto = fix fun sto
   where
     fun :: (Store -> Store) -> Store -> Store
     fun g st = if evalBexp b envV st then g (evalCom c envV envP st) else st 
-    fix :: (a -> a) -> a
-    fix f = let r = f r in r
 evalCom (Block declsV declsP c) envV envP sto@(Sto _ next) =
   gc next $ evalCom c envV' envP' sto'
     where
@@ -135,8 +141,8 @@ evalDeclsP :: [DeclP] -> EnvV -> EnvP -> EnvP
 evalDeclsP [] _ envP = envP
 evalDeclsP (Proc name arg com : decls) envV envP = evalDeclsP decls envV envP'
   where
-    envP' = updateEnvP name g envP
-    g n (Sto sto next) = gc next $ evalCom com envV' envP (Sto sto' next')
+    envP' = updateEnvP name (fix f) envP
+    f g n (Sto sto next) = gc next $ evalCom com envV' (updateEnvP name g envP) (Sto sto' next')
       where
         sto' = updateSto argLoc n sto
         next' = new next
@@ -173,6 +179,20 @@ prog3 = Block
             (Call "q" (Num 0))
             )
 
+prog4 :: Com
+prog4 = Block
+          [Dim "x" (Num 5)]
+          [Proc "mulxby" "y" (Block
+            [Dim "t" (Var "x")]
+            [Proc "aux" "y'" (If
+                (Eq (Var "y'") (Num 1))
+                (Assign "x" (Var "t"))
+                (Assign "t" (Add (Var "t") (Var "x")) `sq`
+                 Call "aux" (Add (Var "y'") (Num (-1))))
+              )]
+            (Call "aux" (Var "y"))
+            )]
+          (Call "mulxby" (Num 20))
 
 main :: IO ()
 main = do
@@ -184,4 +204,6 @@ main = do
   print $ evalCom prog2 [] [] (Sto [] 0)
   print "prog3 -- nested blocks (procedure binding)"
   print $ evalCom prog3 [] [] (Sto [] 0)
+  print "prog4 -- recursion"
+  print $ evalCom prog4 [] [] (Sto [] 0)
 
