@@ -2,6 +2,7 @@ module EagerFun where
 
 import Prelude hiding (lookup)
 import Data.Map
+import Data.Function
 
 type Ide = String
 
@@ -22,7 +23,7 @@ data Expr = N Int
           | Inr Expr
           | Case Expr Ide Expr Ide Expr
           | Let Ide Expr Expr
-          | LetRec Ide Expr Expr
+          | LetRec Ide Ide Expr Expr
 
 type Cont = Val -> Val'
 
@@ -79,8 +80,7 @@ evalExpr (Var x) env k = case lookup x env of
   Nothing -> Err
   Just v -> k v
 evalExpr (Lam x e) env k = k (VFun f)
-  where f v = evalExpr e (env' v)
-        env' v = insert x v env
+  where f v = evalExpr e (insert x v env) 
 evalExpr (App e1 e2) env k = evalExpr e1 env (typedF k')
   where k' f = evalExpr e2 env (`f` k)
 evalExpr (Pair e1 e2) env k = evalExpr e1 env k'
@@ -98,7 +98,8 @@ evalExpr (Case e x1 e1 x2 e2) env k = evalExpr e env (typedLR k')
   where k' (VInl v1) = evalExpr e1 (insert x1 v1 env) k
         k' (VInr v2) = evalExpr e2 (insert x2 v2 env) k
 evalExpr (Let x e0 e) env k = evalExpr (App (Lam x e) e0) env k
-
+evalExpr (LetRec x y e0 e) env k = evalExpr e (insert x (VFun f) env) k
+  where f = fix (\g v k' -> evalExpr e0 (insert y v (insert x (VFun g) env)) k')
 
 eval :: Expr -> Val'
 eval expr = evalExpr expr empty OK
