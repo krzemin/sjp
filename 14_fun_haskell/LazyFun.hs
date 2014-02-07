@@ -118,10 +118,7 @@ evalExpr (Case e x1 e1 x2 e2) env k = evalExpr e env (typedLR kl kr)
 evalExpr (Let x e0 e) env k = evalExpr (App (Lam x e) e0) env k
 evalExpr (LetRec x e0 e) env k = evalExpr (Let x (Rec (Lam x e0)) e) env k
 evalExpr (Rec e) env k = evalExpr e env (typedF k')
-  where k' f = star k (fix (`f` OK))
-
---evalExpr (LetRec x y e0 e) env k = evalExpr e (insert x (VFun f) env) k
---  where f = fix (\g v k' -> evalExpr e0 (insert y v (insert x (VFun g) env)) k')
+  where k' f = star k $ fix (`f` OK)
 
 eval :: Expr -> Val'
 eval expr = evalExpr expr empty OK
@@ -131,7 +128,7 @@ main = do
   let expr1 = App (Lam "x" (Add (Var "x") (N 100))) (Add (N 10) (N 20))
   print $ eval expr1
 
-  let expr2 = (Pair (N 1) (Var "notexists"))
+  let expr2 = Pair (N 1) (Var "notexists")
   print $ eval expr2
   print $ eval (Proj1 expr2)
   print $ eval (Proj2 expr2)
@@ -142,11 +139,17 @@ main = do
   print $ eval ((Proj1 . Proj2) expr3)
   print $ eval ((Proj2 . Proj2) expr3)
 
-  let expr4 = (Rec (Lam "ones" (Pair (N 1) (Var "ones"))))
+  let expr4 = Rec (Lam "ones" (Pair (N 1) (Var "ones")))
   print $ eval expr4
   print $ eval (Proj1 expr4)
   print $ eval (Proj2 expr4)
   print $ eval ((Proj1 . Proj2) expr4)
+
+  let expr5 = App (Rec (Lam "inf" (Lam "init" (Pair (Var "init") (App (Var "inf") (Add (Var "init") (N 1))))))) (N 0)
+  print $ eval expr5
+  print $ eval (Proj1 expr5)
+  print $ eval (Proj2 expr5)
+  print $ eval ((Proj1 . Proj2) expr5)
 
   let fib k = LetRec "fib" (Lam "n" (If (Lt (Var "n") (N 2))
         (Var "n")
