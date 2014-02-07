@@ -48,7 +48,7 @@ instance Show Val where
 
 data Val' = OK Val | Err | TypeErr String deriving (Show)
 
-type Env = Map Ide (Cont -> Val')
+type Env = Map Ide Val'
 
 typedN :: (Int -> Val') -> Val -> Val'
 typedN f (VN x) = f x
@@ -100,9 +100,9 @@ evalExpr (If e e1 e2) env k = evalExpr e env (typedB k')
         k' False = evalExpr e2 env k
 evalExpr (Var x) env k = case lookup x env of
   Nothing -> Err
-  Just v -> v k
+  Just v -> star k v
 evalExpr (Lam x e) env k = k (VFun f)
-  where f v = evalExpr e (insert x (const v) env)
+  where f v = evalExpr e (insert x v env)
 evalExpr (App e1 e2) env k = evalExpr e1 env (typedF k')
   where k' f = evalExpr e2 env (\v -> f (OK v) k)
 evalExpr (Pair e1 e2) env k = k (VSum (evalExpr e1 env, evalExpr e2 env))
@@ -113,8 +113,8 @@ evalExpr (Proj2 e) env k = evalExpr e env (typedS k')
 evalExpr (Inl e) env k = k (VInl (evalExpr e env))
 evalExpr (Inr e) env k = k (VInr (evalExpr e env))
 evalExpr (Case e x1 e1 x2 e2) env k = evalExpr e env (typedLR kl kr)
-  where kl e1' = evalExpr e1 (insert x1 e1' env) k
-        kr e2' = evalExpr e2 (insert x2 e2' env) k
+  where kl e1' = evalExpr e1 (insert x1 (e1' OK) env) k
+        kr e2' = evalExpr e2 (insert x2 (e2' OK) env) k
 evalExpr (Let x e0 e) env k = evalExpr (App (Lam x e) e0) env k
 evalExpr (LetRec x e0 e) env k = evalExpr (Let x (Rec (Lam x e0)) e) env k
 --evalExpr (LetRec x y e0 e) env k = evalExpr e (insert x (VFun f) env) k
@@ -125,13 +125,16 @@ eval expr = evalExpr expr empty OK
 
 main :: IO ()
 main = do
-  let fib k = LetRec "fib" (Lam "n" (If (Lt (Var "n") (N 2))
-        (Var "n")
-        (Add
-          (App (Var "fib") (Sub (Var "n") (N 1)))
-          (App (Var "fib") (Sub (Var "n") (N 2)))
-        ) ) ) (App (Var "fib") (N k))
-  print $ map (eval . fib) [0..15]
+  let expr1 = App (Lam "x" (Add (Var "x") (N 100))) (Add (N 10) (N 20))
+  print $ eval expr1
+
+  --let fib k = LetRec "fib" (Lam "n" (If (Lt (Var "n") (N 2))
+  --      (Var "n")
+  --      (Add
+  --        (App (Var "fib") (Sub (Var "n") (N 1)))
+  --        (App (Var "fib") (Sub (Var "n") (N 2)))
+  --      ) ) ) (App (Var "fib") (N k))
+  --print $ map (eval . fib) [0..15]
 
 
 
