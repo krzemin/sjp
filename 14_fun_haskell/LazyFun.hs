@@ -2,7 +2,7 @@ module LazyFun where
 
 import Prelude hiding (lookup)
 import Data.Map hiding (map)
---import Data.Function
+import Data.Function
 
 type Ide = String
 
@@ -117,6 +117,9 @@ evalExpr (Case e x1 e1 x2 e2) env k = evalExpr e env (typedLR kl kr)
         kr e2' = evalExpr e2 (insert x2 (e2' OK) env) k
 evalExpr (Let x e0 e) env k = evalExpr (App (Lam x e) e0) env k
 evalExpr (LetRec x e0 e) env k = evalExpr (Let x (Rec (Lam x e0)) e) env k
+evalExpr (Rec e) env k = evalExpr e env (typedF k')
+  where k' f = star k (fix (`f` OK))
+
 --evalExpr (LetRec x y e0 e) env k = evalExpr e (insert x (VFun f) env) k
 --  where f = fix (\g v k' -> evalExpr e0 (insert y v (insert x (VFun g) env)) k')
 
@@ -128,13 +131,30 @@ main = do
   let expr1 = App (Lam "x" (Add (Var "x") (N 100))) (Add (N 10) (N 20))
   print $ eval expr1
 
-  --let fib k = LetRec "fib" (Lam "n" (If (Lt (Var "n") (N 2))
-  --      (Var "n")
-  --      (Add
-  --        (App (Var "fib") (Sub (Var "n") (N 1)))
-  --        (App (Var "fib") (Sub (Var "n") (N 2)))
-  --      ) ) ) (App (Var "fib") (N k))
-  --print $ map (eval . fib) [0..15]
+  let expr2 = (Pair (N 1) (Var "notexists"))
+  print $ eval expr2
+  print $ eval (Proj1 expr2)
+  print $ eval (Proj2 expr2)
 
+  let expr3 = Pair (N 1) (Pair (N 2) (Var "notexists"))
+  print $ eval expr3
+  print $ eval (Proj1 expr3)
+  print $ eval ((Proj1 . Proj2) expr3)
+  print $ eval ((Proj2 . Proj2) expr3)
+
+  let expr4 = (Rec (Lam "ones" (Pair (N 1) (Var "ones"))))
+  print $ eval expr4
+  print $ eval (Proj1 expr4)
+  print $ eval (Proj2 expr4)
+  print $ eval ((Proj1 . Proj2) expr4)
+
+  let fib k = LetRec "fib" (Lam "n" (If (Lt (Var "n") (N 2))
+        (Var "n")
+        (Add
+          (App (Var "fib") (Sub (Var "n") (N 1)))
+          (App (Var "fib") (Sub (Var "n") (N 2)))
+        ) ) ) (App (Var "fib") (N k))
+  print $ map (eval . fib) [0..15]
+  
 
 
