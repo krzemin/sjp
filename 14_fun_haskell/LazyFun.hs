@@ -37,7 +37,7 @@ data Val =  VN Int
           | VSum (Expr, Expr)
           | VInl Expr
           | VInr Expr
-          | VExpr Expr
+--          | VExpr Expr
 
 instance Show Val where
   show (VN n) = show n
@@ -46,7 +46,7 @@ instance Show Val where
   show (VSum p) = show p
   show (VInl e) = "inl@" ++ show e
   show (VInr e) = "inr@" ++ show e
-  show (VExpr e) = "code@" ++ show e
+--  show (VExpr e) = "code@" ++ show e
 
 data Val' = OK Val | Err | TypeErr String deriving (Show)
 
@@ -106,7 +106,7 @@ evalExpr (Var x) env k = case lookup x env of
 evalExpr (Lam x e) env k = k (VFun f)
   where f v = evalExpr e (insert x v env) 
 evalExpr (App e1 e2) env k = evalExpr e1 env (typedF k')
-  where k' f = evalExpr e2 env (`f` k)
+  where k' f = f (evalExpr e2 env OK) k
 evalExpr (Pair e1 e2) env k = k (VSum (e1, e2))
 evalExpr (Proj1 e) env k = evalExpr e env (typedS k')
   where k' (e1, _) = evalExpr e1 env k
@@ -115,12 +115,12 @@ evalExpr (Proj2 e) env k = evalExpr e env (typedS k')
 evalExpr (Inl e) env k = k (VInl e)
 evalExpr (Inr e) env k = k (VInr e)
 evalExpr (Case e x1 e1 x2 e2) env k = evalExpr e env (typedLR k')
-  where k' (VInl e1') = evalExpr e1 (insert x1 (VExpr e1') env) k
-        k' (VInr e2') = evalExpr e2 (insert x2 (VExpr e2') env) k
+  where k' (VInl e1') = evalExpr e1 (insert x1 (evalExpr e1' env OK) env) k
+        k' (VInr e2') = evalExpr e2 (insert x2 (evalExpr e2' env OK) env) k
 evalExpr (Let x e0 e) env k = evalExpr (App (Lam x e) e0) env k
 evalExpr (LetRec x e0 e) env k = evalExpr (Let x (Rec (Lam x e)) e) env k
---evalExpr (LetRec x y e0 e) env k = evalExpr e (insert x (VFun f) env) k
---  where f = fix (\g v k' -> evalExpr e0 (insert y v (insert x (VFun g) env)) k')
+
+
 
 eval :: Expr -> Val'
 eval expr = evalExpr expr empty OK
