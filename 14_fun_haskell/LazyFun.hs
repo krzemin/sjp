@@ -2,7 +2,7 @@ module LazyFun where
 
 import Prelude hiding (lookup)
 import Data.Map hiding (map)
-import Data.Function
+--import Data.Function
 
 type Ide = String
 
@@ -34,23 +34,21 @@ type Cont = Val -> Val'
 data Val =  VN Int
           | VB Bool
           | VFun (Val' -> Cont -> Val')
-          | VSum (Expr, Expr)
-          | VInl Expr
-          | VInr Expr
---          | VExpr Expr
+          | VSum (Cont -> Val', Cont -> Val')
+          | VInl (Cont -> Val')
+          | VInr (Cont -> Val')
 
 instance Show Val where
   show (VN n) = show n
   show (VB b) = show b
   show (VFun _) = "@function"
-  show (VSum p) = show p
-  show (VInl e) = "inl@" ++ show e
-  show (VInr e) = "inr@" ++ show e
---  show (VExpr e) = "code@" ++ show e
+  show (VSum _) = "@sum"
+  show (VInl _) = "@inl"
+  show (VInr _) = "@inr"
 
 data Val' = OK Val | Err | TypeErr String deriving (Show)
 
-type Env = Map Ide Val'
+type Env = Map Ide (Cont -> Val')
 
 typedN :: (Int -> Val') -> Val -> Val'
 typedN f (VN x) = f x
@@ -64,14 +62,14 @@ typedF :: ((Val' -> Cont -> Val') -> Val') -> Val -> Val'
 typedF f (VFun x) = f x
 typedF _ _ = TypeErr "expected fun"
 
-typedS :: ((Expr, Expr) -> Val') -> Val -> Val'
+typedS :: ((Cont -> Val', Cont -> Val') -> Val') -> Val -> Val'
 typedS f (VSum x) = f x
 typedS _ _ = TypeErr "expected sum"
 
-typedLR :: (Expr -> Val') -> Val -> Val'
-typedLR f (VInl x) = f x
-typedLR f (VInr x) = f x
-typedLR _ _ = TypeErr "expected inl or inr"
+typedLR :: ((Cont -> Val') -> Val') -> ((Cont -> Val') -> Val') -> Val -> Val'
+typedLR f _ (VInl x) = f x
+typedLR _ g (VInr x) = g x
+typedLR _ _ _ = TypeErr "expected inl or inr"
 
 star :: (Val -> Val') -> Val' -> Val'
 star f (OK x) = f x
@@ -102,25 +100,25 @@ evalExpr (If e e1 e2) env k = evalExpr e env (typedB k')
         k' False = evalExpr e2 env k
 evalExpr (Var x) env k = case lookup x env of
   Nothing -> Err
-  Just v -> star k v
+  Just v -> v k
 evalExpr (Lam x e) env k = k (VFun f)
-  where f v = evalExpr e (insert x v env) 
+  where f v = evalExpr e (insert x (const v) env)
 evalExpr (App e1 e2) env k = evalExpr e1 env (typedF k')
-  where k' f = f (evalExpr e2 env OK) k
-evalExpr (Pair e1 e2) env k = k (VSum (e1, e2))
+  where k' f = evalExpr e2 env (\v -> f (OK v) k)
+evalExpr (Pair e1 e2) env k = k (VSum (evalExpr e1 env, evalExpr e2 env))
 evalExpr (Proj1 e) env k = evalExpr e env (typedS k')
-  where k' (e1, _) = evalExpr e1 env k
+  where k' (f1, _) = f1 k
 evalExpr (Proj2 e) env k = evalExpr e env (typedS k')
-  where k' (_, e2) = evalExpr e2 env k
-evalExpr (Inl e) env k = k (VInl e)
-evalExpr (Inr e) env k = k (VInr e)
-evalExpr (Case e x1 e1 x2 e2) env k = evalExpr e env (typedLR k')
-  where k' (VInl e1') = evalExpr e1 (insert x1 (evalExpr e1' env OK) env) k
-        k' (VInr e2') = evalExpr e2 (insert x2 (evalExpr e2' env OK) env) k
+  where k' (_, f2) = f2 k
+evalExpr (Inl e) env k = k (VInl (evalExpr e env))
+evalExpr (Inr e) env k = k (VInr (evalExpr e env))
+evalExpr (Case e x1 e1 x2 e2) env k = evalExpr e env (typedLR kl kr)
+  where kl e1' = evalExpr e1 (insert x1 e1' env) k
+        kr e2' = evalExpr e2 (insert x2 e2' env) k
 evalExpr (Let x e0 e) env k = evalExpr (App (Lam x e) e0) env k
-evalExpr (LetRec x e0 e) env k = evalExpr (Let x (Rec (Lam x e)) e) env k
-
-
+evalExpr (LetRec x e0 e) env k = evalExpr (Let x (Rec (Lam x e0)) e) env k
+--evalExpr (LetRec x y e0 e) env k = evalExpr e (insert x (VFun f) env) k
+--  where f = fix (\g v k' -> evalExpr e0 (insert y v (insert x (VFun g) env)) k')
 
 eval :: Expr -> Val'
 eval expr = evalExpr expr empty OK
