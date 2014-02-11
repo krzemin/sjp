@@ -81,13 +81,13 @@ evalExpr (Var x) env k = case lookup x env of
   Nothing -> Err
   Just v -> star k v
 evalExpr (Lam x e) env k = k (VFun f)
-  where f v = evalExpr e (insert x v env)
+  where f kv = evalExpr e (insert x (kv OK) env)
 evalExpr (App e1 e2) env k = evalExpr e1 env (typedF k')
-  where k' f = evalExpr e2 env (\v -> f (OK v) k)
+  where k' f = f (evalExpr e2 env) k
 evalExpr (Let x e0 e) env k = evalExpr (App (Lam x e) e0) env k
 evalExpr (LetRec x e0 e) env k = evalExpr (Let x (Rec (Lam x e0)) e) env k
 evalExpr (Rec e) env k = evalExpr e env (typedF k')
-  where k' f = star k $ fix (`f` OK)
+  where k' f = star k $ fix (\v -> f (const v) k)
 
 eval :: Expr -> Val'
 eval expr = evalExpr expr empty OK
