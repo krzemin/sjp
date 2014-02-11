@@ -87,7 +87,7 @@ evalExpr (App e1 e2) env k = evalExpr e1 env (typedF k')
 evalExpr (Let x e0 e) env k = evalExpr (App (Lam x e) e0) env k
 evalExpr (LetRec x e0 e) env k = evalExpr (Let x (Rec (Lam x e0)) e) env k
 evalExpr (Rec e) env k = evalExpr e env (typedF k')
-  where k' f = star k $ fix (\v -> f (const v) k)
+  where k' f = star k $ fix (\v -> f (const v) OK)
 
 eval :: Expr -> Val'
 eval expr = evalExpr expr empty OK
